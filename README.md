@@ -1,0 +1,187 @@
+# cc-orchestrator
+
+Local-first control plane over all Claude Code sessions on this Mac.
+Read-only over `~/.claude` and the Claude Desktop storage — it never writes to either.
+
+See [REPORT.md](REPORT.md) for the build-vs-reuse audit, architecture, and phased plan.
+
+## Run
+
+```sh
+node server.mjs          # http://127.0.0.1:7433  (PORT=… to change)
+```
+
+No dependencies; needs Node ≥ 18.
+
+## What it shows (F1)
+
+Every session across every repo/worktree: title, repo @ branch, entrypoint
+(desktop / vscode / terminal), status, context-window % (1m-window aware),
+last user + assistant message, PR links, live refresh (fs.watch → SSE).
+
+Status semantics:
+
+- `running` — process alive and the transcript was written to in the last 90 s
+- `waiting-on-input` — process alive, Claude's turn is finished
+- `open-idle` — process alive, no recent turn
+- `idle` — no live process; `archived` — archived in Claude Desktop
+
+## Actions (F2)
+
+- **Attach in Terminal** — opens Terminal.app running `claude --resume <id>` in the session's cwd.
+- **Send prompt** — headless `claude -p --resume <id> "<text>"` (default permission mode; never
+  `--dangerously-skip-permissions`). If the target session is *also* open interactively, the CLI
+  forks to a new session id — the job result shows the id so forks are visible.
+- **Fork + prompt** — same with `--fork-session`.
+- **Stop** — kills a job the orchestrator spawned. Foreign interactive sessions can't be paused
+  (no public IPC); steer those via native Remote Control (claude.ai), which the shim enables.
+
+## Shim (remote control by default)
+
+```sh
+bin/install-shim.sh      # appends a marked alias block to ~/.zshrc (backup kept)
+```
+
+After that, every interactive terminal `claude` launch gets `--remote-control`.
+
+- Opt out per-invocation: `CLAUDE_NO_RC=1 claude`
+- Never injected for: `-p/--print`, `--help/--version`, subcommands (`mcp`, `config`, …), non-TTY.
+- Scope: terminal launches only — Desktop/VS Code spawn the binary directly and bypass shell aliases.
+- Uninstall: delete the marked block from `~/.zshrc`.
+- Debug: `CLAUDE_SHIM_DRYRUN=1 claude …` prints the resolved command.
+
+## Phase 2 — context sharing, chat launcher (F3 + F4)
+
+Rolling per-session context files let a new session pick up where an old one left off, and the
+dashboard's chat launcher routes a task to the most relevant prior session.
+
+### Rolling context files (F3)
+
+Each session gets `~/.claude/contexts/<session-uuid>.md` — frontmatter (`session, repo, cwd,
+title, tags, updated`) plus five curated sections (Goal / Key files / Decisions / State / Next
+step), capped at ~50 lines. The generator **merges and shrinks**, never appends.
+
+Driven by hooks (merged additively into `~/.claude/settings.json`):
+
+- **SessionStart** → injects `session-id: <uuid>` (so the agent knows its own id) and the context path if one exists.
+- **Stop** → if the transcript is ≥50 KB and the context file is >5 min old, spawns the generator **detached** and returns immediately.
+- **PreCompact** → always regenerates before context is compacted away.
+- **UserPromptSubmit** → on the first real prompt, surfaces relevant prior sessions; once per session, warns at ≥70% context-window usage and suggests `/context` + fork.
+
+All hooks are **fail-open** (any error exits 0 silently) and never call a model on the hot path —
+the model work happens only in the detached job. The recursion guard (`CC_CTX_JOB=1` on the
+spawned process) stops the generator's own `claude` call from re-triggering the hooks.
+
+- `jobs/ctx-generate.mjs` — dialogue-only tail (≤30 KB, never raw transcript) → `claude -p --model claude-fable-5 --effort low --no-session-persistence` → write context.md → rebuild `index.json`.
+- `jobs/backfill-contexts.mjs --limit N` — **opt-in** backfill (costs quota; never auto-runs).
+- `jobs/rebuild-index.mjs` — rebuild the index from context files on disk.
+- `/context` skill (`~/.claude/skills/context/SKILL.md`) — manual high-fidelity variant: the agent writes its own context.md from live conversation knowledge.
+
+### Index + retrieval (F4)
+
+`~/.claude/contexts/index.json` (`{sessionId, repo, cwd, title, tags, goal, updated}`) is rebuilt
+by the generator. `lib/rank.mjs` is a **pure lexical** scorer (weighted title/tags > goal > repo >
+body, recency + same-repo boosts) — no model calls, sub-millisecond, shared by the hooks and the
+server.
+
+### Chat launcher (dashboard hero)
+
+The hero search box (⌘K) debounces ~150 ms and hits `GET /api/related?q=…`, ranking the context
+index **and** live session titles. Per match:
+
+- **Open chat** → `/api/attach` (Terminal, `claude --resume`).
+- **Continue here** → `/api/send` (headless resume).
+- **New chat w/ context** → `POST /api/launch` opens Terminal running `claude "Read <context.md path> for prior context, then: <your prompt>"`. The new session reads the context file itself — quoting-safe and token-cheap; transcripts are never inlined.
+
+No match → plain new chat in a chosen repo (dropdown of known cwds). Session cards with a context
+file show a **context** chip → a modal that renders the file and has a **Related** tab
+(rank.mjs against that session's goal) plus a copy-`--resume`-command button.
+
+New endpoints: `GET /api/related`, `GET /api/context/<uuid>`, `POST /api/launch` (with `dry:true`
+returning the command string). All behind the same Host-header check; `/api/context` is gated by a
+strict session-uuid allowlist (no path traversal).
+
+## Phone access (remote control)
+
+Open the dashboard on your phone and do everything except the two Terminal actions
+(those open on your Mac, and are labelled "opens on your Mac"). The server keeps binding
+`127.0.0.1`; remote access is brokered by a transport and gated by a token.
+
+### Transport (pick one)
+
+1. **Tailscale (recommended)** — private, TLS for free, reachable only from your tailnet:
+   ```sh
+   ./phone-link.sh          # runs `tailscale serve --bg http://127.0.0.1:7433`
+   ```
+   It auto-detects your `https://<machine>.<tailnet>.ts.net` URL, adds that host to the
+   allowlist (`~/.config/cc-orchestrator/hosts`), and the server picks it up within ~2s.
+   If Tailscale isn't installed it prints the one-liner:
+   `brew install --cask tailscale && open -a Tailscale`.
+2. **LAN (opt-in)** — same Wi-Fi only:
+   ```sh
+   CC_LAN=1 ./start.sh      # binds 0.0.0.0; prints http://<mac-lan-ip>:7433
+   ```
+   The allowlist then accepts the Mac's own LAN IP/hostname (computed at boot) and keeps
+   rejecting everything else.
+
+No funnel / ngrok / cloudflared — the server is never exposed to the public internet.
+
+### Auth
+
+- A random 32-byte token is generated on first remote access → `~/.config/cc-orchestrator/token` (chmod 600).
+- **Loopback stays tokenless** (local UX unchanged). Every non-loopback request needs the token.
+- One-tap: open `<url>/login?key=<token>` once → sets an `HttpOnly; SameSite=Strict` cookie
+  (plus `Secure` over Tailscale HTTPS) → redirects to `/`. The 401 page is a clean token form.
+- POSTs additionally require an `X-CC: 1` header (set by the frontend) as a CSRF belt; SSE needs only the cookie.
+- Failed auth is rate-limited to 10/min/IP.
+
+### Onboarding panel
+
+The header's **📱 phone** button opens a modal with the active remote URL, the **tokenized
+one-tap link**, and Copy/Open buttons. `GET /api/phone-link` returns `{url, mode}` (the token
+and one-tap link are included only for loopback callers). QR is intentionally omitted — a
+correct encoder is >300 lines and unverifiable without a scanner; copy/AirDrop the link instead.
+
+### Always-on
+
+So the link works whenever you pick up your phone:
+```sh
+./install-launchagent.sh           # localhost only
+CC_LAN=1 ./install-launchagent.sh  # also bind LAN
+```
+Writes `~/Library/LaunchAgents/com.cc-orchestrator.plist` (RunAtLoad + KeepAlive), validates
+it with `plutil -lint`, and loads it. Uninstall is printed on success
+(`launchctl bootout gui/$(id -u)/com.cc-orchestrator && rm <plist>`).
+
+### Mobile UI
+
+Responsive under 700px (full-width cards, ≥44px touch targets, condensed header, bottom-sheet
+dialogs), plus a web-app manifest + theme-color + apple-mobile-web-app meta and an SVG icon so
+add-to-home-screen feels native (no service worker).
+
+## Per-session cost calculator
+
+Every session card shows its **lifetime API cost** in gold (with a per-model
+breakdown on hover), and the header shows total spend across all sessions.
+
+- `lib/pricing.mjs` — USD-per-1M-token table (input + output per model). Current Claude
+  models are flat-priced across the full 1M context window (no long-context premium), so
+  one rate per model is correct. Cache economics: reads 0.1×, writes 1.25× (5-min) / 2×
+  (1-hour) of the base input rate. Override or extend via `~/.claude/contexts/pricing.json`
+  (same shape, merged over the defaults); `GET /api/pricing` returns the active table.
+- `lib/cost.mjs` — sums every assistant turn's token usage per model across the **whole**
+  transcript (cumulative, not the tail), cached on `(size, mtime)` so a refresh re-reads
+  only changed files. `<synthetic>` harness placeholders are excluded (not billable).
+
+Cost is computed inside the cached scan: cold first read ~1 s for all sessions, ~10 ms
+warm. The figure is cumulative lifetime spend for the session, broken down by model
+(input / output / cache-read / cache-write tiers). If a transcript uses a model missing
+from the table, that session's total marks itself `*` and the model shows as `unpriced` —
+add it to `pricing.json`.
+
+### Token frugality (design requirement)
+
+All orchestrator-internal model jobs use `claude-fable-5 --effort low --no-session-persistence` —
+never Opus. Models never see raw transcripts (dialogue text only, ≤30 KB tail). Ranking and search
+are purely lexical so they're free and fast enough to run inside hooks and on every keystroke.
+Context is shared by injecting the ≤50-line context.md (or just its path) — never transcript chunks.

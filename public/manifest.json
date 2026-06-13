@@ -1,0 +1,12 @@
+{
+    "name": "cc-orchestrator",
+    "short_name": "cc-orch",
+    "description": "Control plane for Claude Code sessions",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#0a0c10",
+    "theme_color": "#0a0c10",
+    "icons": [
+        { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+    ]
+}

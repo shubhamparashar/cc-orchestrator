@@ -1,0 +1,50 @@
+#!/bin/zsh
+# claude shim: launch interactive sessions with --remote-control by default.
+# Opt out per-invocation with CLAUDE_NO_RC=1, or remove the alias block in ~/.zshrc.
+# CLAUDE_SHIM_DRYRUN=1 prints the resolved command instead of executing it.
+
+REAL="${CLAUDE_ORIG_BIN:-$HOME/.claude/local/claude}"
+if [[ ! -x "$REAL" ]]; then
+    # fall back to the next claude on PATH that isn't this shim (resolve symlinks
+    # on both sides, or a symlinked shim would exec itself forever)
+    for candidate in ${(f)"$(whence -ap claude 2>/dev/null)"}; do
+        [[ -x "$candidate" ]] || continue
+        [[ "${candidate:A}" == "${0:A}" ]] && continue
+        REAL="$candidate"
+        break
+    done
+fi
+if [[ ! -x "$REAL" ]]; then
+    print -ru2 -- "claude-shim: no usable 'claude' binary found (checked \$CLAUDE_ORIG_BIN, ~/.claude/local/claude, and PATH)"
+    exit 127
+fi
+
+inject=1
+[[ -n "$CLAUDE_NO_RC" ]] && inject=0
+[[ ! -t 0 || ! -t 1 ]] && inject=0   # not a TTY → headless/piped, never inject
+
+if (( inject )); then
+    # subcommands (claude mcp, claude config, …) are only ever the first argument;
+    # matching them anywhere would misfire on flag values like --add-dir mcp
+    case "${1:-}" in
+        mcp|config|doctor|update|install|migrate-installer|setup-token|api|plugin|auth|login|logout) inject=0 ;;
+    esac
+fi
+if (( inject )); then
+    for arg in "$@"; do
+        case "$arg" in
+            --) break ;;   # everything after -- is positional, never flags
+            --remote-control|--remote-control=*) inject=0; break ;;
+            -p|--print|--help|-h|--version|-v|--output-format|--output-format=*) inject=0; break ;;
+        esac
+    done
+fi
+
+args=("$@")
+(( inject )) && args=(--remote-control "${args[@]}")
+
+if [[ -n "$CLAUDE_SHIM_DRYRUN" ]]; then
+    print -r -- "$REAL ${args[@]}"
+    exit 0
+fi
+exec "$REAL" "${args[@]}"

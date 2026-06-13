@@ -1,0 +1,15 @@
+# OS
+.DS_Store
+
+# editor / temp
+*.swp
+.review-*.mjs
+
+# logs (the server logs to /tmp, but guard against local redirects)
+*.log
+
+# node (project is zero-dependency, but never commit these if added)
+node_modules/
+
+# runtime config + secrets live OUTSIDE the repo, in ~/.config/cc-orchestrator/
+# (token, hosts, remote.json) — listed here only as a reminder; nothing to ignore in-tree

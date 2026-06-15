@@ -41,6 +41,14 @@ if [[ -z "$HOSTNAME" ]]; then
 fi
 URL="https://$HOSTNAME"
 
+# Keep Tailscale in "serve-only" mode: do NOT route the Mac's own outbound
+# traffic or DNS through the tunnel. accept-routes / accept-dns (MagicDNS) put
+# tailscaled in the path of every outbound connection, which intermittently
+# drops long-lived sockets — e.g. Claude Code's streaming call to the Anthropic
+# API fails with "socket connection closed unexpectedly". Serve is inbound and
+# needs neither, so force them off (persistent prefs; safe to re-run).
+"$TS" set --accept-routes=false --accept-dns=false 2>/dev/null || true
+
 # Proxy https://<machine>.ts.net → 127.0.0.1:$P, in the background.
 # `tailscale serve` blocks (waiting for you to enable Serve) when the tailnet's
 # Serve/HTTPS capability is off, so bound it with a timeout and then verify via

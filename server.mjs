@@ -279,13 +279,13 @@ const handler = async (req, res) => {
         }
         if (req.method === 'GET' && url.pathname === '/') {
             const html = await readFile(join(PUBLIC_DIR, 'index.html'));
-            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
             return res.end(html);
         }
         if (req.method === 'GET' && STATIC_FILES[url.pathname]) {
             const { file, type } = STATIC_FILES[url.pathname];
             const body = await readFile(join(PUBLIC_DIR, file));
-            res.writeHead(200, { 'Content-Type': type });
+            res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-cache' });
             return res.end(body);
         }
         if (req.method === 'GET' && url.pathname === '/api/phone-link') {

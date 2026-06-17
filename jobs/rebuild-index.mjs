@@ -1,6 +1,7 @@
-// Rebuild ~/.claude/contexts/index.json from the context files on disk.
-// Used by the /context skill after a manual context write.
-import { rebuildIndex } from '../lib/contextStore.mjs';
+// Rebuild ~/.claude/contexts/index.json from ALL transcripts (Tier-1, free —
+// no model calls), enriched with any curated context.md. Safe to run anytime.
+import { buildSessionIndex } from '../lib/sessionIndex.mjs';
 
-const entries = await rebuildIndex();
-console.log(`index rebuilt: ${entries.length} context(s)`);
+const entries = await buildSessionIndex();
+const withCtx = entries.filter((e) => e.hasContext).length;
+console.log(`index rebuilt: ${entries.length} sessions (${withCtx} with context.md)`);

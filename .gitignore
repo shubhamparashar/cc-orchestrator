@@ -11,5 +11,8 @@
 # node (project is zero-dependency, but never commit these if added)
 node_modules/
 
+# tool artifacts (Serena language-server cache, etc.)
+.serena/
+
 # runtime config + secrets live OUTSIDE the repo, in ~/.config/cc-orchestrator/
 # (token, hosts, remote.json) — listed here only as a reminder; nothing to ignore in-tree

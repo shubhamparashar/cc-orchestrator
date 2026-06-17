@@ -10,7 +10,11 @@ P=${PORT:-7433}
 OLD=$(lsof -ti tcp:$P -sTCP:LISTEN 2>/dev/null || true)
 if [[ -n "$OLD" ]]; then
     for pid in ${=OLD}; do
-        if ps -p "$pid" -o args= 2>/dev/null | grep -q "$DIR/server.mjs"; then
+        args=$(ps -p "$pid" -o args= 2>/dev/null)
+        # ours if argv has the absolute path (agent-launched) OR it's server.mjs
+        # running with this repo as its cwd (manual `node server.mjs`)
+        if [[ "$args" == *"$DIR/server.mjs"* ]] || \
+           { [[ "$args" == *server.mjs* ]] && lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | grep -qx "n$DIR"; }; then
             kill "$pid"
         else
             echo "port $P is held by an unrelated process (pid $pid). Stop it or set PORT=…"; exit 1

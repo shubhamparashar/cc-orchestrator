@@ -9,10 +9,14 @@ import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 
 import { isSyntheticUserText, parseLines, readSlice, digestFile } from '../lib/scan.mjs';
-import { CONTEXTS_DIR, acquireGenLock, readContext, rebuildIndex, releaseGenLock, writeContext } from '../lib/contextStore.mjs';
+import { CONTEXTS_DIR, acquireGenLock, readContext, releaseGenLock, writeContext } from '../lib/contextStore.mjs';
+import { buildSessionIndex } from '../lib/sessionIndex.mjs';
 
 const CLAUDE_BIN = process.env.CC_CTX_CLAUDE_BIN || join(homedir(), '.claude', 'local', 'claude');
-const MODEL = process.env.CC_CTX_MODEL || 'claude-fable-5';
+// Cheapest generally-available model for these short summaries. (Fable 5 is
+// access-gated and can be "currently unavailable"; if the chosen model fails we
+// fall back to the CLI's default model — see runClaude callers.)
+const MODEL = process.env.CC_CTX_MODEL || 'claude-haiku-4-5';
 const RAW_TAIL_BYTES = 512 * 1024;
 const DIALOGUE_CAP_BYTES = 30 * 1024;
 const PER_MESSAGE_CAP = 1500;
@@ -93,9 +97,10 @@ NEW CONVERSATION EXCERPT (oldest first):
 ${dialogue}`;
 }
 
-function runClaude(prompt) {
+function runClaude(prompt, model) {
     return new Promise((resolve, reject) => {
-        const args = ['-p', '--model', MODEL, '--effort', 'low', '--no-session-persistence'];
+        const args = ['-p', '--no-session-persistence'];
+        if (model) args.push('--model', model);   // omitted → CLI default model
         const child = spawn(CLAUDE_BIN, args, {
             cwd: CONTEXTS_DIR,
             env: { ...process.env, CC_CTX_JOB: '1', CLAUDE_NO_RC: '1' },
@@ -112,8 +117,10 @@ function runClaude(prompt) {
         child.on('error', (err) => { clearTimeout(timer); reject(err); });
         child.on('close', (code) => {
             clearTimeout(timer);
+            // an unavailable/gated model prints to stdout and exits non-zero, so
+            // surface whichever stream has the message
             if (code === 0) resolve(stdout);
-            else reject(new Error(`claude exited ${code}: ${stderr.slice(0, 400)}`));
+            else reject(new Error(`claude exited ${code}: ${(stderr || stdout).slice(0, 200).replace(/\s+/g, ' ')}`));
         });
         child.stdin.end(prompt);
     });
@@ -170,10 +177,17 @@ try {
     const existing = (await readContext(sessionId))?.content || null;
 
     const prompt = buildPrompt({ existing, dialogue, repo, title });
-    const modelOutput = await runClaude(prompt);
+    let modelOutput;
+    try {
+        modelOutput = await runClaude(prompt, MODEL);
+    } catch (err) {
+        // a model can be unavailable/gated; fall back to the CLI's default model
+        log(`model ${MODEL} failed (${err.message.slice(0, 90)}) — retrying with default model`);
+        modelOutput = await runClaude(prompt, null);
+    }
     const file = composeFile({ sessionId, repo, cwd, title, modelOutput });
     const path = await writeContext(sessionId, file);
-    await rebuildIndex();
+    await buildSessionIndex();
     log(`ok ${sessionId} -> ${path} (${file.length}B)`);
 } catch (err) {
     log(`fail ${sessionId || '?'}: ${err.message}`);

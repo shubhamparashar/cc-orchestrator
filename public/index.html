@@ -4,345 +4,453 @@
 <meta charset="utf-8">
 <title>cc-orchestrator</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0a0b0e">
+<meta name="theme-color" content="#dce7f3">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="cc-orch">
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" type="image/svg+xml" href="/icon.svg">
 <link rel="apple-touch-icon" href="/icon.svg">
 <style>
-/* ── animatable surface tokens (one rung up the ladder on hover) ───────────── */
-@property --card-bg { syntax: "<color>"; inherits: false; initial-value: oklch(0.205 0.012 264); }
-@property --card-bd { syntax: "<color>"; inherits: false; initial-value: oklch(0.30 0.015 264 / 0.55); }
+@property --card-bg { syntax: "<color>"; inherits: false; initial-value: #eef4fb; }
 
 :root {
-    /* monochrome surface ladder (canvas → surface → elevated → card) */
-    --canvas:   oklch(0.155 0.009 264);
-    --surface:  oklch(0.185 0.010 264);
-    --elevated: oklch(0.215 0.012 264);
-    --card:     oklch(0.205 0.012 264);
-    --card-up:  oklch(0.238 0.014 264);
+    --page:    #dce7f3;
+    --surface: #e5eef8;
+    --card:    #eef4fb;
+    --card-up: #f5f9fe;
+    --inner:   #f8fbff;
 
-    --text:  oklch(0.965 0.006 264);
-    --dim:   oklch(0.74 0.012 264);
-    --faint: oklch(0.59 0.012 264);
+    --accent:    #4a8fd0;
+    --accent-dk: #2d6ca8;
+    --accent-lt: #7ab4e8;
+    --accent-ink: #fff;
+    --ring:      rgba(74,143,208,.28);
 
-    --hairline:  color-mix(in oklch, white 7%, transparent);
-    --hairline-2: color-mix(in oklch, white 11%, transparent);
+    --text:  #2c3744;
+    --dim:   #3c4854;
+    --muted: #7d8b9a;
 
-    /* one restrained accent (indigo); cyan only in the hero/logo gradient */
-    --accent:   oklch(0.66 0.17 274);
-    --accent-2: oklch(0.82 0.12 205);
-    --accent-ink: oklch(0.99 0.01 274);
-    --ring: color-mix(in oklch, var(--accent) 42%, transparent);
+    --green:  #35a874;
+    --amber:  #e8a03e;
+    --blue:   #5b9bd5;
+    --red:    #e05555;
+    --purple: #9068c8;
+    --gold:   #c49035;
 
-    /* saturated color lives in data, not furniture */
-    --green: oklch(0.80 0.16 158);
-    --amber: oklch(0.84 0.15 85);
-    --blue:  oklch(0.76 0.13 245);
-    --red:   oklch(0.72 0.18 22);
-    --purple: oklch(0.76 0.15 305);
-    --gold:  oklch(0.86 0.11 92);
+    --clay-out:  6px 6px 14px rgba(100,140,180,.36), -5px -5px 12px rgba(255,255,255,.88);
+    --clay-card: 5px 5px 12px rgba(100,140,180,.30), -4px -4px 10px rgba(255,255,255,.84);
+    --clay-in:   inset 4px 4px 10px rgba(100,140,180,.36), inset -3px -3px 8px rgba(255,255,255,.84);
+    --clay-sm:   3px 3px 7px rgba(100,140,180,.28), -2px -2px 6px rgba(255,255,255,.84);
 
-    --r-sm: 7px; --r-md: 10px; --r-lg: 14px;
-    --shadow: 0 1px 0 0 var(--hairline) inset, 0 10px 30px -12px oklch(0 0 0 / 0.7);
-    --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    --r-sm: 10px; --r-md: 14px; --r-lg: 18px; --r-xl: 22px;
 }
 
+.icon-sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+svg.icon { display: inline-block; vertical-align: -0.13em; flex-shrink: 0; }
+
 * { box-sizing: border-box; }
-html { scrollbar-color: oklch(0.32 0.012 264) transparent; }
+html { scrollbar-color: rgba(74,143,208,.35) transparent; }
 body {
-    margin: 0; background: var(--canvas); color: var(--text);
+    margin: 0; background: var(--page); color: var(--text);
     font: 14px/1.5 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
     font-feature-settings: 'cv01','ss03','calt','tnum';
     -webkit-font-smoothing: antialiased;
     background-image:
-        radial-gradient(900px 480px at 50% -260px, color-mix(in oklch, var(--accent) 16%, transparent), transparent 70%),
-        radial-gradient(680px 360px at 88% -160px, color-mix(in oklch, var(--accent-2) 9%, transparent), transparent 70%);
-    background-repeat: no-repeat;
-    min-height: 100vh;
-    overflow-x: clip;   /* a fixed toast/overlay layer must never create horizontal scroll; clip keeps the sticky header working (unlike hidden) */
+        radial-gradient(ellipse 900px 420px at 15% 0%, rgba(74,143,208,.09), transparent 70%),
+        radial-gradient(ellipse 700px 350px at 85% 100%, rgba(122,180,232,.07), transparent 70%);
+    min-height: 100vh; overflow-x: clip;
 }
 .tnum { font-variant-numeric: tabular-nums; }
 
-/* ── header ────────────────────────────────────────────────────────────────── */
+/* ── header ─────────────────────────────────────────────── */
 header {
-    display: flex; align-items: center; gap: 10px; padding: 13px clamp(12px, 3vw, 24px);
+    display: flex; align-items: center; gap: 10px;
+    padding: 13px clamp(14px,3vw,26px);
     position: sticky; top: 0; z-index: 20; flex-wrap: wrap;
-    background: color-mix(in oklch, var(--canvas) 78%, transparent);
-    backdrop-filter: blur(16px) saturate(1.4);
-    border-bottom: 1px solid var(--hairline);
+    background: rgba(220,231,243,.82);
+    backdrop-filter: blur(20px) saturate(1.5);
+    border-bottom: 1px solid rgba(255,255,255,.65);
+    box-shadow: 0 2px 14px rgba(100,140,180,.14);
 }
 .brand { display: inline-flex; align-items: center; gap: 9px; }
 .brand .mark {
-    width: 22px; height: 22px; border-radius: 7px; flex-shrink: 0;
-    background: linear-gradient(135deg, var(--accent-2), var(--accent));
-    box-shadow: 0 0 0 1px var(--hairline-2), 0 0 16px -4px var(--accent);
-    position: relative;
+    width: 28px; height: 28px; border-radius: 9px; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--accent-lt), var(--accent));
+    box-shadow: var(--clay-sm), inset 0 0 0 1.5px rgba(255,255,255,.4);
+    display: inline-flex; align-items: center; justify-content: center;
 }
-.brand .mark::after {
-    content: ""; position: absolute; inset: 5px; border-radius: 3px;
-    border: 1.6px solid oklch(0.16 0.01 264 / 0.9); border-right-color: transparent; border-bottom-color: transparent;
-    transform: rotate(45deg);
-}
-.logo {
-    font-size: 14.5px; font-weight: 680; letter-spacing: -.015em;
-    background: linear-gradient(92deg, var(--accent-2), var(--accent));
-    -webkit-background-clip: text; background-clip: text; color: transparent;
-}
-.meta { color: var(--dim); font-size: 12px; }
+.brand .mark svg { color: #fff; }
+.logo { font-size: 15px; font-weight: 700; letter-spacing: -.02em; color: var(--accent-dk); }
+.meta { color: var(--muted); font-size: 12px; }
 #counts { font-variant-numeric: tabular-nums; }
 .spacer { flex: 1; }
+
 input[type=search], select, .input {
-    background: var(--surface); color: var(--text); border: 1px solid var(--hairline);
-    border-radius: var(--r-md); padding: 7px 11px; font: inherit; font-size: 13px; outline: none;
-    transition: border-color .16s, box-shadow .16s, background .16s;
+    background: var(--inner); color: var(--text);
+    border: 1.5px solid rgba(255,255,255,.72);
+    border-radius: var(--r-md); padding: 8px 12px;
+    font: inherit; font-size: 13px; outline: none;
+    box-shadow: var(--clay-in);
+    transition: border-color .16s, box-shadow .16s;
+    appearance: none; -webkit-appearance: none;
 }
-input[type=search]::placeholder { color: var(--faint); }
-input[type=search]:hover, select:hover, .input:hover { border-color: var(--hairline-2); }
-input[type=search]:focus, select:focus, .input:focus,
-input[type=search]:focus-visible, select:focus-visible, .input:focus-visible {
-    border-color: color-mix(in oklch, var(--accent) 60%, transparent);
-    box-shadow: 0 0 0 3px var(--ring);
+select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237d8b9a' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 10px center;
+    padding-right: 30px;
+}
+input[type=search]::placeholder { color: var(--muted); }
+input[type=search]:focus, select:focus, .input:focus {
+    border-color: rgba(74,143,208,.55);
+    box-shadow: var(--clay-in), 0 0 0 3px var(--ring);
 }
 :focus-visible { outline: none; }
 .btn:focus-visible, .iconbtn:focus-visible, .tab:focus-visible, .badge.ctx:focus-visible {
-    box-shadow: 0 0 0 3px var(--ring); border-color: color-mix(in oklch, var(--accent) 60%, transparent);
+    box-shadow: 0 0 0 3px var(--ring);
 }
 
-/* ── hero command palette ──────────────────────────────────────────────────── */
-.hero { position: relative; max-width: 760px; margin: clamp(26px, 5vw, 46px) auto 6px; padding: 0 clamp(12px,3vw,20px); }
-.hero h2 { text-align: center; font-size: clamp(19px, 3.4vw, 25px); font-weight: 660; letter-spacing: -.025em; margin: 0 0 18px; color: var(--text); }
-.hero h2 .grad { background: linear-gradient(92deg, var(--accent-2), var(--accent)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-
-.hero::before {  /* aurora mesh glow, behind the frosted surface */
-    content: ""; position: absolute; inset: 36px -8% auto; height: 220px; z-index: 0; pointer-events: none;
-    background:
-        radial-gradient(420px 200px at 28% 30%, color-mix(in oklch, var(--accent) 40%, transparent), transparent 70%),
-        radial-gradient(420px 220px at 74% 60%, color-mix(in oklch, var(--accent-2) 30%, transparent), transparent 70%);
-    filter: blur(46px) saturate(1.3); opacity: .5;
+/* ── hero ────────────────────────────────────────────────── */
+.hero {
+    position: relative; max-width: 760px;
+    margin: clamp(28px,5vw,50px) auto 6px;
+    padding: 0 clamp(14px,3vw,22px);
 }
-@media (prefers-reduced-motion: no-preference) {
-    .hero::before { animation: drift 14s ease-in-out infinite alternate; }
-    @keyframes drift { from { transform: translate3d(-3%, -4px, 0) scale(1); } to { transform: translate3d(4%, 6px, 0) scale(1.06); } }
+.hero h2 {
+    text-align: center; font-size: clamp(20px,3.4vw,27px);
+    font-weight: 700; letter-spacing: -.03em; margin: 0 0 20px; color: var(--text);
+}
+.hero h2 .grad {
+    background: linear-gradient(92deg, var(--accent-lt), var(--accent));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 
 .launchbox {
-    position: relative; z-index: 1; border-radius: 18px; padding: 1px;
-    background: linear-gradient(135deg, color-mix(in oklch, var(--accent-2) 55%, transparent), color-mix(in oklch, var(--accent) 45%, transparent) 45%, var(--hairline) 80%);
-    box-shadow: 0 24px 60px -28px oklch(0 0 0 / 0.85);
+    border-radius: var(--r-xl); background: var(--card);
+    box-shadow: var(--clay-out); border: 1.5px solid rgba(255,255,255,.78); overflow: hidden;
 }
-.launchbox-inner {
-    position: relative; border-radius: 17px; padding: 6px 8px 8px;
-    background: color-mix(in oklch, var(--elevated) 86%, transparent);
-    backdrop-filter: blur(20px) saturate(1.3); overflow: hidden;
-}
-.launchbox-inner::after { content: ""; position: absolute; inset: 0; background-image: var(--noise); background-size: 140px; opacity: .03; pointer-events: none; }
-.launchrow { display: flex; gap: 10px; align-items: center; padding: 8px 8px 8px 12px; }
-.launchrow .glyph { color: var(--faint); flex-shrink: 0; display: inline-flex; }
+.launchbox-inner { padding: 6px 8px 10px; }
+.launchrow { display: flex; gap: 10px; align-items: center; padding: 10px 14px 10px 16px; }
+.launchrow .glyph { color: var(--muted); flex-shrink: 0; display: inline-flex; }
 #launcherQ {
-    flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--text);
-    font: inherit; font-size: 16px; padding: 2px 0;
+    flex: 1; min-width: 0; background: transparent; border: none; outline: none;
+    color: var(--text); font: inherit; font-size: 16px; padding: 2px 0;
 }
-#launcherQ::placeholder { color: var(--faint); }
-kbd { font: 11px/1 ui-monospace, 'SF Mono', monospace; color: var(--dim); background: var(--surface);
-    border: 1px solid var(--hairline-2); border-bottom-width: 2px; border-radius: 6px; padding: 4px 7px; flex-shrink: 0; }
-.launchctl { display: flex; gap: 10px; align-items: center; margin-top: 6px; padding: 10px 6px 4px; border-top: 1px solid var(--hairline); }
+#launcherQ::placeholder { color: var(--muted); }
+kbd {
+    font: 11px/1 ui-monospace,'SF Mono',monospace; color: var(--muted);
+    background: var(--inner); border: 1.5px solid rgba(255,255,255,.72);
+    border-radius: 8px; padding: 4px 8px; flex-shrink: 0; box-shadow: var(--clay-sm);
+}
+.launchctl {
+    display: flex; gap: 10px; align-items: center; margin-top: 4px;
+    padding: 10px 8px 4px; border-top: 1px solid rgba(74,143,208,.12);
+}
 
+/* ── buttons ─────────────────────────────────────────────── */
 .btn {
-    background: var(--surface); color: var(--text); border: 1px solid var(--hairline);
-    border-radius: var(--r-md); padding: 7px 13px; font: inherit; font-size: 12.5px; font-weight: 530; cursor: pointer;
-    transition: border-color .15s, background .15s, transform .08s, box-shadow .15s; white-space: nowrap;
+    background: var(--card); color: var(--dim);
+    border: 1.5px solid rgba(255,255,255,.72); border-radius: var(--r-md);
+    padding: 8px 15px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+    box-shadow: var(--clay-sm); transition: box-shadow .15s, transform .08s, background .15s;
+    white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
 }
-.btn:hover { border-color: var(--hairline-2); background: var(--elevated); }
-.btn:active { transform: translateY(1px); }
+.btn:hover { background: var(--card-up); box-shadow: var(--clay-out); }
+.btn:active { transform: translateY(1px); box-shadow: var(--clay-in); background: var(--surface); }
 .btn.primary {
-    background: linear-gradient(135deg, color-mix(in oklch, var(--accent) 88%, white 6%), var(--accent));
-    border-color: transparent; color: var(--accent-ink); font-weight: 620;
-    box-shadow: 0 1px 0 0 oklch(1 0 0 / .15) inset, 0 6px 18px -8px var(--accent);
+    background: linear-gradient(135deg, var(--accent-lt), var(--accent));
+    border-color: rgba(255,255,255,.4); color: #fff;
+    box-shadow: 4px 4px 10px rgba(74,143,208,.44), -3px -3px 8px rgba(255,255,255,.7);
 }
-.btn.primary:hover { filter: brightness(1.08); }
-.btn.ghost { background: transparent; }
-.btn:disabled { opacity: .42; cursor: default; transform: none; }
+.btn.primary:hover { filter: brightness(1.07); box-shadow: 6px 6px 14px rgba(74,143,208,.52), -4px -4px 10px rgba(255,255,255,.75); }
+.btn.primary:active { filter: brightness(.95); box-shadow: var(--clay-in); }
+.btn.ghost { background: transparent; box-shadow: none; border-color: transparent; color: var(--muted); }
+.btn.ghost:hover { background: var(--surface); box-shadow: var(--clay-sm); border-color: rgba(255,255,255,.72); color: var(--dim); }
+.btn:disabled { opacity: .44; cursor: default; transform: none; box-shadow: var(--clay-sm); }
 
-#matches { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; margin: 8px 4px 0; }
+/* ── launcher matches ────────────────────────────────────── */
+#matches { display: grid; grid-template-columns: minmax(0,1fr); gap: 5px; margin: 8px 4px 0; }
 #matches:empty { margin: 0; }
 .match {
-    display: flex; align-items: center; gap: 12px; padding: 9px 11px; min-width: 0;
-    border: 1px solid transparent; border-radius: var(--r-md); cursor: default;
-    transition: background .12s, border-color .12s;
-    animation: rise .16s ease both;
+    display: flex; align-items: center; gap: 12px; padding: 10px 13px; min-width: 0;
+    border: 1.5px solid rgba(255,255,255,.6); border-radius: var(--r-md);
+    cursor: default; background: var(--inner);
+    transition: background .12s, box-shadow .12s, border-color .12s;
+    animation: rise .18s ease both;
 }
-.match:hover, .match.sel { background: color-mix(in oklch, var(--accent) 12%, var(--surface)); border-color: color-mix(in oklch, var(--accent) 30%, transparent); }
-.match.sel { box-shadow: inset 2px 0 0 0 var(--accent); }
+.match:hover, .match.sel { background: var(--card-up); box-shadow: var(--clay-sm); border-color: rgba(74,143,208,.32); }
+.match.sel { box-shadow: var(--clay-sm), inset 3px 0 0 var(--accent); }
 .match .info { flex: 1; min-width: 0; }
-.match .t { font-weight: 580; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.match .g { color: var(--dim); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.match .t { font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.match .g { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .match .acts { display: flex; gap: 6px; flex-shrink: 0; }
-@keyframes rise { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
-/* ── status dots + badges ──────────────────────────────────────────────────── */
-.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
-.dot.running { background: var(--green); box-shadow: 0 0 0 0 color-mix(in oklch, var(--green) 60%, transparent); }
+/* ── status dots ─────────────────────────────────────────── */
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.dot.running          { background: var(--green); }
 .dot.waiting-on-input { background: var(--amber); }
-.dot.open-idle { background: var(--blue); }
-.dot.idle { background: var(--faint); }
-.dot.archived { background: oklch(0.4 0.01 264); }
+.dot.open-idle        { background: var(--blue); }
+.dot.idle             { background: var(--muted); opacity: .6; }
+.dot.archived         { background: #adbdcd; }
 @media (prefers-reduced-motion: no-preference) {
     .dot.running { animation: pulse 1.9s ease-out infinite; }
     @keyframes pulse {
-        0% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--green) 55%, transparent); }
-        70% { box-shadow: 0 0 0 7px transparent; }
+        0%   { box-shadow: 0 0 0 0 rgba(53,168,116,.55); }
+        70%  { box-shadow: 0 0 0 7px transparent; }
         100% { box-shadow: 0 0 0 0 transparent; }
     }
 }
-.badge {
-    font-size: 10.5px; font-weight: 540; padding: 2.5px 8px; border-radius: 999px;
-    border: 1px solid var(--hairline); color: var(--dim); white-space: nowrap; letter-spacing: .01em;
-    display: inline-flex; align-items: center; gap: 4px;
-}
-.badge.entry { color: var(--purple); border-color: color-mix(in oklch, var(--purple) 32%, transparent); background: color-mix(in oklch, var(--purple) 10%, transparent); }
-.badge.ctx { color: var(--accent-2); border-color: color-mix(in oklch, var(--accent-2) 34%, transparent); background: color-mix(in oklch, var(--accent-2) 9%, transparent); cursor: pointer; transition: background .14s; }
-.badge.ctx:hover { background: color-mix(in oklch, var(--accent-2) 18%, transparent); }
-.badge.pr { color: var(--green); border-color: color-mix(in oklch, var(--green) 30%, transparent); background: color-mix(in oklch, var(--green) 9%, transparent); }
-.badge.wt { color: var(--amber); border-color: color-mix(in oklch, var(--amber) 30%, transparent); background: color-mix(in oklch, var(--amber) 9%, transparent); }
-.badge.cost { color: var(--gold); border-color: color-mix(in oklch, var(--gold) 30%, transparent); background: color-mix(in oklch, var(--gold) 8%, transparent); font-variant-numeric: tabular-nums; cursor: help; }
-.totalcost { color: var(--gold); font-weight: 620; font-variant-numeric: tabular-nums; cursor: help; }
 
-/* ── context ring ──────────────────────────────────────────────────────────── */
+/* ── badges ──────────────────────────────────────────────── */
+.badge {
+    font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.65); color: var(--muted); white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 4px; background: var(--inner);
+    box-shadow: 2px 2px 5px rgba(100,140,180,.2), -1px -1px 4px rgba(255,255,255,.84);
+}
+.badge.entry {
+    color: var(--purple); border-color: rgba(144,104,200,.3); background: rgba(144,104,200,.08);
+    box-shadow: 2px 2px 5px rgba(144,104,200,.15), -1px -1px 4px rgba(255,255,255,.84);
+}
+.badge.ctx {
+    color: var(--accent); border-color: rgba(74,143,208,.3); background: rgba(74,143,208,.08);
+    box-shadow: 2px 2px 5px rgba(74,143,208,.16), -1px -1px 4px rgba(255,255,255,.84);
+    cursor: pointer; transition: background .14s, box-shadow .14s;
+}
+.badge.ctx:hover { background: rgba(74,143,208,.16); box-shadow: var(--clay-sm); }
+.badge.pr {
+    color: var(--green); border-color: rgba(53,168,116,.3); background: rgba(53,168,116,.08);
+    box-shadow: 2px 2px 5px rgba(53,168,116,.14), -1px -1px 4px rgba(255,255,255,.84);
+}
+.badge.wt {
+    color: var(--amber); border-color: rgba(232,160,62,.3); background: rgba(232,160,62,.08);
+    box-shadow: 2px 2px 5px rgba(232,160,62,.14), -1px -1px 4px rgba(255,255,255,.84);
+}
+.badge.cost {
+    color: var(--gold); border-color: rgba(196,144,53,.3); background: rgba(196,144,53,.08);
+    box-shadow: 2px 2px 5px rgba(196,144,53,.14), -1px -1px 4px rgba(255,255,255,.84);
+    font-variant-numeric: tabular-nums; cursor: help;
+}
+.totalcost { color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; cursor: help; }
+
+/* ── context ring ────────────────────────────────────────── */
 .ring { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .ring svg { transform: rotate(-90deg); display: block; }
-.ring .track { stroke: var(--hairline-2); }
+.ring .track { stroke: rgba(100,140,180,.2); }
 .ring .arc { transition: stroke-dashoffset .7s cubic-bezier(.22,.8,.18,1); stroke-linecap: round; }
-.ring .pct { font-size: 11.5px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.ring .pct { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .ring .arc { transition: none; } }
 
-/* ── session grid ──────────────────────────────────────────────────────────── */
-main { padding: 12px clamp(12px,3vw,24px) 90px; max-width: 1380px; margin: 0 auto; }
-#banner { display: none; background: color-mix(in oklch, var(--red) 12%, transparent); border: 1px solid color-mix(in oklch, var(--red) 45%, transparent);
-    color: oklch(0.85 0.09 22); border-radius: var(--r-lg); padding: 11px 15px; font-size: 13px; margin: 10px 0; }
-#banner code { background: oklch(0 0 0 / .35); padding: 1px 6px; border-radius: 5px; font-size: 12px; }
-#banner a { color: var(--accent-2); }
-.gridhead { display: flex; align-items: baseline; gap: 10px; margin: 24px 2px 13px; flex-wrap: wrap; }
-.gridhead h3 { margin: 0; font-size: 11px; font-weight: 650; color: var(--faint); text-transform: uppercase; letter-spacing: .12em; }
-#grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 13px; }
+/* ── grid + cards ────────────────────────────────────────── */
+main { padding: 12px clamp(14px,3vw,26px) 90px; max-width: 1380px; margin: 0 auto; }
+#banner {
+    display: none; background: rgba(224,85,85,.1); border: 1.5px solid rgba(224,85,85,.32);
+    color: #b03636; border-radius: var(--r-lg); padding: 12px 16px; font-size: 13px;
+    margin: 10px 0; box-shadow: var(--clay-sm);
+}
+#banner code { background: rgba(0,0,0,.07); padding: 1px 6px; border-radius: 5px; font-size: 12px; }
+#banner a { color: var(--accent); }
+.gridhead { display: flex; align-items: baseline; gap: 10px; margin: 24px 2px 14px; flex-wrap: wrap; }
+.gridhead h3 { margin: 0; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; }
+#grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px,1fr)); gap: 15px; }
 
 .card {
-    --card-bg: var(--card); --card-bd: var(--hairline);
+    --card-bg: #eef4fb;
     background: var(--card-bg);
-    border: 1px solid var(--card-bd); border-radius: var(--r-lg);
-    padding: 14px 15px; box-shadow: var(--shadow);
-    display: flex; flex-direction: column; gap: 9px;
-    min-width: 0;   /* grid item: shrink to the track, not the longest message */
-    transition: --card-bg .2s ease, --card-bd .2s ease, transform .2s cubic-bezier(.22,.8,.18,1), box-shadow .2s;
+    border: 1.5px solid rgba(255,255,255,.76); border-radius: var(--r-lg);
+    padding: 16px 17px; box-shadow: var(--clay-card);
+    display: flex; flex-direction: column; gap: 10px; min-width: 0;
+    transition: --card-bg .22s ease, transform .22s cubic-bezier(.22,.8,.18,1), box-shadow .22s, border-color .22s;
     container-type: inline-size;
 }
 .card > * { min-width: 0; }
 .card .msgs div { max-width: 100%; }
 .card:hover {
-    --card-bg: var(--card-up); --card-bd: color-mix(in oklch, var(--accent) 36%, var(--hairline-2));
-    transform: translateY(-2px);
-    box-shadow: 0 1px 0 0 var(--hairline-2) inset, 0 16px 36px -16px oklch(0 0 0 / 0.8), 0 0 0 1px color-mix(in oklch, var(--accent) 12%, transparent);
+    --card-bg: #f5f9fe;
+    transform: translateY(-3px);
+    box-shadow: 8px 8px 18px rgba(100,140,180,.36), -6px -6px 14px rgba(255,255,255,.9);
+    border-color: rgba(74,143,208,.28);
 }
 @supports (animation-timeline: view()) {
     @media (prefers-reduced-motion: no-preference) {
         #grid .card { animation: cardIn linear both; animation-timeline: view(); animation-range: entry 0% entry 42%; }
-        @keyframes cardIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+        @keyframes cardIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
     }
 }
 .row1 { display: flex; align-items: center; gap: 9px; }
-.title { font-weight: 600; font-size: 14px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -.01em; }
-.row2 { display: flex; align-items: center; gap: 9px; color: var(--dim); font-size: 12px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
-.row2 .repo { color: var(--text); opacity: .9; font-weight: 520; }
-.row2 .sid { opacity: .5; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; }
+.title { font-weight: 650; font-size: 14px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -.01em; color: var(--text); }
+.row2 { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 12px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.row2 .repo { color: var(--dim); font-weight: 560; }
+.row2 .sid { opacity: .6; font-family: ui-monospace,'SF Mono',monospace; font-size: 11px; }
 .msgs { display: grid; gap: 3px; font-size: 12.5px; }
 .msgs div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.msgs .u { color: var(--faint); }
+.msgs .u { color: var(--muted); }
 .msgs .a { color: var(--dim); }
-.msgs b { font-weight: 600; color: color-mix(in oklch, var(--accent-2) 80%, var(--text)); opacity: .95; margin-right: 3px; }
+.msgs b { font-weight: 650; color: var(--accent); margin-right: 3px; }
 .actions { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 2px; }
 .badges { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-.empty { color: var(--dim); text-align: center; padding: 56px; }
+.empty { color: var(--muted); text-align: center; padding: 56px; }
 
-/* ── dialogs ───────────────────────────────────────────────────────────────── */
+/* ── dialogs ─────────────────────────────────────────────── */
 dialog {
-    background: var(--elevated); color: var(--text); border: 1px solid var(--hairline-2);
-    border-radius: 16px; padding: 0; width: min(640px, 92vw); box-shadow: 0 40px 90px -30px oklch(0 0 0 / 0.9);
+    background: var(--card); color: var(--text);
+    border: 1.5px solid rgba(255,255,255,.76); border-radius: var(--r-xl);
+    padding: 0; width: min(640px,92vw);
+    box-shadow: 12px 12px 32px rgba(100,140,180,.38), -8px -8px 20px rgba(255,255,255,.72);
     overflow: hidden;
 }
-dialog::backdrop { background: oklch(0.1 0.01 264 / 0.6); backdrop-filter: blur(4px); }
-dialog > .dlgpad { padding: 20px; }
-dialog h3 { margin: 0 0 4px; font-size: 15px; font-weight: 640; letter-spacing: -.01em; }
+dialog::backdrop { background: rgba(44,55,68,.32); backdrop-filter: blur(6px); }
+dialog > .dlgpad { padding: 22px; }
+dialog h3 { margin: 0 0 4px; font-size: 16px; font-weight: 700; letter-spacing: -.015em; color: var(--text); display: flex; align-items: center; gap: 7px; }
 textarea {
-    width: 100%; min-height: 112px; background: var(--canvas); color: var(--text);
-    border: 1px solid var(--hairline); border-radius: var(--r-md); padding: 11px; font: inherit; outline: none; resize: vertical;
-    transition: border-color .15s, box-shadow .15s;
+    width: 100%; min-height: 112px; background: var(--inner); color: var(--text);
+    border: 1.5px solid rgba(255,255,255,.72); border-radius: var(--r-md);
+    padding: 12px; font: inherit; outline: none; resize: vertical;
+    box-shadow: var(--clay-in); transition: border-color .15s;
 }
-textarea:focus { border-color: color-mix(in oklch, var(--accent) 55%, transparent); box-shadow: 0 0 0 3px var(--ring); }
+textarea:focus { border-color: rgba(74,143,208,.5); }
 .dlgrow { display: flex; gap: 10px; margin-top: 14px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
-label.chk { font-size: 12.5px; color: var(--dim); display: inline-flex; gap: 7px; align-items: center; cursor: pointer; }
-.tabs { display: flex; gap: 4px; margin: 12px 0; }
-.tab { padding: 6px 13px; border-radius: var(--r-sm); font-size: 12.5px; font-weight: 520; cursor: pointer; color: var(--dim); border: 1px solid transparent; transition: background .14s, color .14s; }
-.tab:hover { color: var(--text); background: var(--surface); }
-.tab.active { color: var(--text); background: var(--surface); border-color: var(--hairline-2); }
-.ctxbody {
-    background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--r-md);
-    padding: 15px 17px; max-height: 52vh; overflow: auto; font-size: 13px; line-height: 1.6;
+label.chk { font-size: 12.5px; color: var(--muted); display: inline-flex; gap: 7px; align-items: center; cursor: pointer; }
+.tabs { display: flex; gap: 5px; margin: 13px 0; }
+.tab {
+    padding: 7px 14px; border-radius: var(--r-md);
+    font-size: 12.5px; font-weight: 600; cursor: pointer;
+    color: var(--muted); border: 1.5px solid transparent;
+    transition: background .14s, color .14s, box-shadow .14s;
 }
-.ctxbody h4 { margin: 15px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent-2); font-weight: 650; }
+.tab:hover { color: var(--dim); background: var(--surface); }
+.tab.active { color: var(--accent-dk); background: var(--inner); border-color: rgba(255,255,255,.72); box-shadow: var(--clay-sm); }
+.ctxbody {
+    background: var(--inner); border: 1.5px solid rgba(255,255,255,.72); border-radius: var(--r-md);
+    padding: 16px 18px; max-height: 52vh; overflow: auto;
+    font-size: 13px; line-height: 1.65; box-shadow: var(--clay-in);
+}
+.ctxbody h4 { margin: 16px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); font-weight: 700; }
 .ctxbody h4:first-child { margin-top: 0; }
 .ctxbody ul { margin: 4px 0; padding-left: 18px; color: var(--dim); }
 .ctxbody li { margin: 3px 0; }
 .ctxbody p { margin: 4px 0; color: var(--dim); }
-.ctxmeta { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.ctxmeta { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 13px; }
 
-/* ── job toasts ────────────────────────────────────────────────────────────── */
-.jobs { position: fixed; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom)); display: grid; gap: 10px; width: min(400px, calc(100vw - 28px)); z-index: 40; box-sizing: border-box; }
-.job {
-    background: color-mix(in oklch, var(--elevated) 92%, transparent); border: 1px solid var(--hairline-2); border-left: 3px solid var(--blue);
-    border-radius: var(--r-md); padding: 11px 13px; font-size: 12.5px; box-shadow: 0 18px 40px -18px oklch(0 0 0 / .85);
-    backdrop-filter: blur(12px); animation: toastIn .22s cubic-bezier(.22,.8,.18,1) both;
+/* ── job toasts ──────────────────────────────────────────── */
+.jobs {
+    position: fixed; right: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    display: grid; gap: 10px; width: min(400px,calc(100vw - 32px)); z-index: 40;
 }
-@keyframes toastIn { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+.job {
+    background: var(--card); border: 1.5px solid rgba(255,255,255,.72); border-left: 4px solid var(--blue);
+    border-radius: var(--r-md); padding: 12px 14px; font-size: 12.5px;
+    box-shadow: var(--clay-card); animation: toastIn .22s cubic-bezier(.22,.8,.18,1) both;
+}
+@keyframes toastIn { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .job, .match, .jobs .job { animation: none; } }
 .job.done { border-left-color: var(--green); }
 .job.error { border-left-color: var(--red); }
 .job pre { white-space: pre-wrap; margin: 6px 0 0; color: var(--dim); max-height: 150px; overflow: auto; font-size: 11.5px; }
 
 .iconbtn {
-    background: var(--surface); color: var(--text); border: 1px solid var(--hairline);
-    border-radius: var(--r-md); padding: 7px 11px; font: inherit; font-size: 13px; cursor: pointer;
-    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; transition: border-color .15s, background .15s;
+    background: var(--card); color: var(--dim);
+    border: 1.5px solid rgba(255,255,255,.72); border-radius: var(--r-md);
+    padding: 8px 13px; font: inherit; font-size: 13px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+    box-shadow: var(--clay-sm); transition: box-shadow .15s, background .15s;
 }
-.iconbtn:hover { border-color: var(--hairline-2); background: var(--elevated); }
-.maconly { font-size: 10px; color: var(--faint); margin-left: 5px; }
+.iconbtn:hover { background: var(--card-up); box-shadow: var(--clay-out); }
+.iconbtn:active { box-shadow: var(--clay-in); }
+.maconly { font-size: 10px; color: var(--muted); margin-left: 4px; }
 .bigfield {
-    width: 100%; box-sizing: border-box; background: var(--canvas); border: 1px solid var(--hairline);
-    border-radius: var(--r-md); padding: 11px 12px; color: var(--text); font: 12.5px/1.5 ui-monospace, 'SF Mono', monospace;
-    word-break: break-all; user-select: all;
+    width: 100%; background: var(--inner); border: 1.5px solid rgba(255,255,255,.72);
+    border-radius: var(--r-md); padding: 12px 13px; color: var(--text);
+    font: 12.5px/1.5 ui-monospace,'SF Mono',monospace;
+    word-break: break-all; user-select: all; box-shadow: var(--clay-in);
 }
-.modetag { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--hairline); }
-.modetag.tailscale { color: var(--green); border-color: color-mix(in oklch, var(--green) 40%, transparent); background: color-mix(in oklch, var(--green) 9%, transparent); }
-.modetag.lan { color: var(--amber); border-color: color-mix(in oklch, var(--amber) 40%, transparent); background: color-mix(in oklch, var(--amber) 9%, transparent); }
-.modetag.off { color: var(--faint); }
+.modetag { display: inline-block; font-size: 11px; font-weight: 650; padding: 2px 10px; border-radius: 999px; border: 1px solid; }
+.modetag.tailscale { color: var(--green); border-color: rgba(53,168,116,.4); background: rgba(53,168,116,.1); }
+.modetag.lan        { color: var(--amber); border-color: rgba(232,160,62,.4); background: rgba(232,160,62,.1); }
+.modetag.off        { color: var(--muted); border-color: rgba(125,139,154,.3); background: rgba(125,139,154,.08); }
 
-/* ── view transitions (gated) ──────────────────────────────────────────────── */
+/* ── setup guide (collapsible) ───────────────────────────── */
+.guide {
+    margin-top: 16px; border-radius: var(--r-md);
+    background: var(--surface); border: 1.5px solid rgba(255,255,255,.6);
+    box-shadow: var(--clay-in); overflow: hidden;
+}
+.guide > summary {
+    cursor: pointer; padding: 12px 14px; font-size: 12.5px; font-weight: 650;
+    color: var(--accent-dk); list-style: none; user-select: none;
+    display: flex; align-items: center; gap: 8px;
+}
+.guide > summary::-webkit-details-marker { display: none; }
+.guide > summary::after {
+    content: ""; width: 6px; height: 6px; margin-left: auto; flex-shrink: 0;
+    border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+    transform: rotate(45deg); transition: transform .18s;
+}
+.guide[open] > summary::after { transform: rotate(-135deg); }
+.guide-body { padding: 2px 16px 14px; font-size: 12.5px; color: var(--dim); }
+.guide-body h5 {
+    margin: 14px 0 7px; font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--accent); font-weight: 700; display: flex; align-items: center; gap: 6px;
+}
+.guide-body h5:first-child { margin-top: 4px; }
+.guide-body ol { margin: 0; padding-left: 19px; display: grid; gap: 6px; }
+.guide-body li { line-height: 1.5; }
+.guide-body code {
+    background: var(--inner); border: 1px solid rgba(255,255,255,.7); box-shadow: var(--clay-sm);
+    padding: 1px 6px; border-radius: 6px; word-break: break-all;
+    font: 11.5px/1.6 ui-monospace,'SF Mono',monospace; color: var(--accent-dk);
+}
+.guide-body a { color: var(--accent); }
+.guide-body p.note { margin: 13px 0 0; color: var(--muted); }
+
+/* ── job dismiss button ──────────────────────────────────── */
+.job { position: relative; }
+.job > b { display: inline-block; padding-right: 22px; }
+.job-x {
+    position: absolute; top: 7px; right: 7px; padding: 4px; line-height: 0;
+    background: transparent; border: none; cursor: pointer; color: var(--muted);
+    border-radius: 7px; display: inline-flex; transition: background .14s, color .14s;
+}
+.job-x:hover { background: var(--surface); color: var(--text); }
+
+/* ── in-app chat viewer ──────────────────────────────────── */
+.chatbody {
+    background: var(--inner); border: 1.5px solid rgba(255,255,255,.72);
+    border-radius: var(--r-md); padding: 14px; max-height: 56vh; overflow: auto;
+    box-shadow: var(--clay-in); display: grid; gap: 11px; align-content: start;
+}
+.chatmsg { display: grid; gap: 3px; max-width: 100%; }
+.chatmsg.user { justify-items: end; }
+.chatmsg.assistant { justify-items: start; }
+.chatmsg .who { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 0 4px; }
+.chatmsg.user .who { color: var(--muted); }
+.chatmsg.assistant .who { color: var(--accent); }
+.chatmsg .bubble {
+    font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
+    border-radius: 13px; padding: 9px 13px; max-width: 90%;
+}
+.chatmsg.user .bubble { background: linear-gradient(135deg, var(--accent-lt), var(--accent)); color: #fff; box-shadow: var(--clay-sm); }
+.chatmsg.assistant .bubble { background: var(--card); color: var(--text); border: 1.5px solid rgba(255,255,255,.6); box-shadow: var(--clay-sm); }
+@media (max-width: 700px) { .chatmsg .bubble { max-width: 96%; } }
+
+/* ── view transitions ────────────────────────────────────── */
 @media (prefers-reduced-motion: no-preference) {
-    ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .26s; }
+    ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .25s; }
 }
 
-/* ── responsive ────────────────────────────────────────────────────────────── */
+/* ── responsive ──────────────────────────────────────────── */
 @media (max-width: 700px) {
-    header { padding: 10px 12px; gap: 8px; }
+    header { padding: 10px 14px; gap: 8px; }
     #counts { font-size: 11px; }
     #q { flex: 1 1 100%; order: 5; }
     #statusFilter, #repoFilter { flex: 1 1 40%; }
     #updated { display: none; }
-    main { padding: 10px 12px calc(94px + env(safe-area-inset-bottom)); }
+    main { padding: 10px 14px calc(94px + env(safe-area-inset-bottom)); }
     #grid { grid-template-columns: 1fr; }
-    .hero { margin: 16px auto 6px; }
-    #launcherQ { font-size: 16px; }       /* ≥16px prevents iOS zoom-on-focus */
+    .hero { margin: 18px auto 6px; }
+    #launcherQ { font-size: 16px; }
     .launchctl { flex-wrap: wrap; }
     .launchctl .btn.primary { flex: 1 1 100%; order: 5; }
     .btn, .iconbtn, .tab, select, input[type=search] { min-height: 44px; }
@@ -351,14 +459,67 @@ label.chk { font-size: 12.5px; color: var(--dim); display: inline-flex; gap: 7px
     .match .acts .btn { flex: 1; min-height: 40px; }
     .card .actions .btn { flex: 1; }
     dialog { width: 100vw; max-width: 100vw; max-height: 92vh; margin: auto auto 0;
-        border-radius: 18px 18px 0 0; border-bottom: none; }
-    .jobs { left: 10px; right: 10px; width: auto; bottom: calc(10px + env(safe-area-inset-bottom)); }
+        border-radius: 22px 22px 0 0; border-bottom: none; }
+    .jobs { left: 12px; right: 12px; width: auto; bottom: calc(12px + env(safe-area-inset-bottom)); }
 }
 </style>
 </head>
 <body>
+
+<svg class="icon-sprite" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <symbol id="ic-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>
+      <rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>
+    </symbol>
+    <symbol id="ic-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+    </symbol>
+    <symbol id="ic-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="7" y="2" width="10" height="20" rx="2.5"/><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none"/>
+    </symbol>
+    <symbol id="ic-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
+    </symbol>
+    <symbol id="ic-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+    </symbol>
+    <symbol id="ic-fork" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="6" cy="3" r="1.5"/><circle cx="18" cy="3" r="1.5"/><circle cx="6" cy="21" r="1.5"/>
+      <path d="M6 4.5v13.5"/><path d="M18 4.5c0 3.5-3 5-5.5 5H8a3 3 0 0 0-2 1v2"/>
+    </symbol>
+    <symbol id="ic-brain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 5C8.5 5 6 7.5 6 11c0 1.8.7 3.3 1.8 4.4-.6.8-1 1.7-1 2.6a3.2 3.2 0 0 0 5.2 2.5"/>
+      <path d="M12 5c3.5 0 6 2.5 6 6 0 1.8-.7 3.3-1.8 4.4.6.8 1 1.7 1 2.6a3.2 3.2 0 0 1-5.2 2.5"/>
+      <line x1="12" y1="5" x2="12" y2="20"/>
+    </symbol>
+    <symbol id="ic-pr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/>
+      <path d="M6 8v8"/><path d="M18 8a4 4 0 0 1-4 4H9"/><polyline points="7 13 6 18 11 17"/>
+    </symbol>
+    <symbol id="ic-coin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="9"/>
+      <path d="M14.8 9a2 2 0 0 0-1.8-1h-2a1.8 1.8 0 0 0 0 3.6h2a1.8 1.8 0 0 1 0 3.6h-2a2 2 0 0 1-1.8-1"/>
+      <path d="M12 7v10"/>
+    </symbol>
+    <symbol id="ic-laptop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="4" y="5" width="16" height="11" rx="1.5"/>
+      <path d="M2 20h20"/>
+    </symbol>
+    <symbol id="ic-message" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 11.5a8.38 8.38 0 0 1-9 8.4 9 9 0 0 1-3.3-.6L3 21l1.3-3.9A8.38 8.38 0 0 1 3.6 8 8.4 8.4 0 0 1 12 3.1a8.38 8.38 0 0 1 9 8.4z"/>
+    </symbol>
+    <symbol id="ic-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M18 6 6 18M6 6l12 12"/>
+    </symbol>
+  </defs>
+</svg>
+
 <header>
-    <span class="brand"><span class="mark"></span><span class="logo">cc-orchestrator</span></span>
+    <span class="brand">
+        <span class="mark"><svg class="icon" width="16" height="16"><use href="#ic-grid"/></svg></span>
+        <span class="logo">cc-orchestrator</span>
+    </span>
     <span class="meta" id="counts"></span>
     <span class="spacer"></span>
     <input type="search" id="q" placeholder="filter sessions…">
@@ -371,7 +532,9 @@ label.chk { font-size: 12.5px; color: var(--dim); display: inline-flex; gap: 7px
         <option value="archived">archived</option>
     </select>
     <select id="repoFilter"><option value="">all repos</option></select>
-    <button class="iconbtn" id="phoneBtn" title="Open on your phone">📱 phone</button>
+    <button class="iconbtn" id="phoneBtn" title="Open on your phone">
+        <svg class="icon" width="15" height="15"><use href="#ic-phone"/></svg> phone
+    </button>
     <span class="meta" id="updated"></span>
 </header>
 
@@ -379,8 +542,8 @@ label.chk { font-size: 12.5px; color: var(--dim); display: inline-flex; gap: 7px
     <h2>What do you want to <span class="grad">work on</span>?</h2>
     <div class="launchbox"><div class="launchbox-inner">
         <div class="launchrow">
-            <span class="glyph" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg></span>
-            <input id="launcherQ" placeholder="Describe a task — matching sessions & contexts appear as you type…" autocomplete="off" aria-label="Command launcher">
+            <span class="glyph" aria-hidden="true"><svg class="icon" width="17" height="17"><use href="#ic-search"/></svg></span>
+            <input id="launcherQ" placeholder="Describe a task — matching sessions &amp; contexts appear as you type…" autocomplete="off" aria-label="Command launcher">
             <kbd>⌘K</kbd>
         </div>
         <div id="matches"></div>
@@ -388,7 +551,10 @@ label.chk { font-size: 12.5px; color: var(--dim); display: inline-flex; gap: 7px
             <span class="meta">No match?</span>
             <select id="launchRepo" class="input"></select>
             <span class="spacer"></span>
-            <button class="btn primary" id="launchNew" disabled>New chat in Terminal <span class="maconly">opens on your Mac</span></button>
+            <button class="btn primary" id="launchNew" disabled>
+                <svg class="icon" width="13" height="13"><use href="#ic-terminal"/></svg>
+                New chat in Terminal <span class="maconly">opens on your Mac</span>
+            </button>
         </div>
     </div></div>
 </section>
@@ -406,7 +572,9 @@ label.chk { font-size: 12.5px; color: var(--dim); display: inline-flex; gap: 7px
     <div class="dlgrow">
         <label class="chk"><input type="checkbox" id="sendFork"> fork to a new session</label>
         <button class="btn" onclick="closeDlg('sendDialog')">Cancel</button>
-        <button class="btn primary" id="sendGo">Send</button>
+        <button class="btn primary" id="sendGo">
+            <svg class="icon" width="13" height="13"><use href="#ic-send"/></svg> Send
+        </button>
     </div>
 </div></dialog>
 
@@ -426,11 +594,42 @@ label.chk { font-size: 12.5px; color: var(--dim); display: inline-flex; gap: 7px
 </div></dialog>
 
 <dialog id="phoneDialog"><div class="dlgpad">
-    <h3>📱 Open on your phone</h3>
+    <h3><svg class="icon" width="17" height="17"><use href="#ic-phone"/></svg> Open on your phone</h3>
     <p class="meta" id="phoneMode" style="margin:4px 0 12px"></p>
     <div id="phoneBody"></div>
+    <details class="guide" id="phoneGuide">
+        <summary><svg class="icon" width="14" height="14"><use href="#ic-phone"/></svg> First time? Set up Tailscale (private access)</summary>
+        <div class="guide-body">
+            <h5><svg class="icon" width="13" height="13"><use href="#ic-laptop"/></svg> On your Mac</h5>
+            <ol>
+                <li>Install Tailscale: <code>brew install --cask tailscale</code> — or download it from <a href="https://tailscale.com/download" target="_blank" rel="noopener">tailscale.com/download</a> / the Mac App Store.</li>
+                <li>Open the Tailscale app and sign in (Google, GitHub, Microsoft, or email). Note which account you use.</li>
+                <li>In the cc-orchestrator repo, run <code>./phone-link.sh</code>. This serves this dashboard over your private tailnet on HTTPS.</li>
+                <li>Reopen this panel — the transport above flips to <span class="modetag tailscale">Tailscale</span> and a one-tap link appears.</li>
+            </ol>
+            <h5><svg class="icon" width="13" height="13"><use href="#ic-phone"/></svg> On your phone</h5>
+            <ol>
+                <li>Install Tailscale from the App Store (iOS) or Google Play (Android).</li>
+                <li>Sign in with the <strong>same account</strong> you used on the Mac — both devices must be on the same tailnet.</li>
+                <li>Turn the Tailscale toggle on. iOS will ask to add a VPN configuration — allow it.</li>
+                <li>Back here, copy the <strong>one-tap link</strong> (AirDrop or Message it to yourself) and open it on the phone. It signs you in automatically.</li>
+            </ol>
+            <p class="note">Tailscale is a private WireGuard mesh — only your own signed-in devices can reach the link. Nothing is exposed to the public internet, and the link stops working the moment Tailscale is off.</p>
+        </div>
+    </details>
     <div class="dlgrow">
         <button class="btn" onclick="closeDlg('phoneDialog')">Close</button>
+    </div>
+</div></dialog>
+
+<dialog id="chatDialog"><div class="dlgpad">
+    <h3 id="chatTitle"><svg class="icon" width="16" height="16"><use href="#ic-message"/></svg> Chat</h3>
+    <p class="meta" id="chatMeta" style="margin:4px 0 10px"></p>
+    <div class="chatbody" id="chatBody"></div>
+    <div class="dlgrow">
+        <span class="meta" id="chatLive" style="flex:1;min-width:0"></span>
+        <button class="btn" id="chatSend"><svg class="icon" width="13" height="13"><use href="#ic-send"/></svg> Send prompt</button>
+        <button class="btn" onclick="closeDlg('chatDialog')">Close</button>
     </div>
 </div></dialog>
 
@@ -440,7 +639,10 @@ label.chk { font-size: 12.5px; color: var(--dim); display: inline-flex; gap: 7px
 const state = { sessions: [], jobs: {}, toasts: {}, matches: [] };
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
-// View-transition wrapper — gated; falls back to a plain call.
+// Loopback = the Mac itself (Terminal attach is useful). Anything else (phone via
+// Tailscale, LAN) is "remote": surface the in-app chat viewer as the primary action.
+const IS_REMOTE = !['127.0.0.1', 'localhost', '::1', ''].includes(location.hostname);
+
 function withVT(fn) {
     if (document.startViewTransition && !reduceMotion.matches) document.startViewTransition(fn);
     else fn();
@@ -495,16 +697,14 @@ function ringSvg(pct, size = 28) {
         </svg><span class="pct">${pct}%</span></span>`;
 }
 
-/* ── banner / failure hints (behavior unchanged) ───────────── */
+const icn = (id, s = 13) =>
+    `<svg class="icon" width="${s}" height="${s}"><use href="#${id}"/></svg>`;
+
 function showBanner(html) {
     const b = document.getElementById('banner');
-    b.innerHTML = html;
-    b.style.display = 'block';
+    b.innerHTML = html; b.style.display = 'block';
 }
-
-function hideBanner() {
-    document.getElementById('banner').style.display = 'none';
-}
+function hideBanner() { document.getElementById('banner').style.display = 'none'; }
 
 const SERVER_URL = 'http://127.0.0.1:7433';
 
@@ -518,9 +718,8 @@ function loadFailureHint(err) {
         `otherwise start it with <code>node server.mjs</code> in cc-orchestrator.`;
 }
 
-/* ── sessions ──────────────────────────────────────────────── */
 function statusLabel(s) {
-    return { 'running': 'running', 'waiting-on-input': 'waiting', 'open-idle': 'open', 'idle': 'idle', 'archived': 'archived' }[s] || s;
+    return { 'running':'running','waiting-on-input':'waiting','open-idle':'open','idle':'idle','archived':'archived' }[s] || s;
 }
 
 function cardHtml(s) {
@@ -540,18 +739,19 @@ function cardHtml(s) {
             <span class="badge">${statusLabel(s.status)}${s.pid ? ' · ' + s.pid : ''}</span>
             ${s.entrypoint ? `<span class="badge entry">${esc(String(s.entrypoint).replace('claude-',''))}</span>` : ''}
             ${s.isWorktree ? '<span class="badge wt">worktree</span>' : ''}
-            ${s.hasContext ? `<span class="badge ctx" tabindex="0" role="button" onclick="openCtx('${s.sessionId}')" onkeydown="if(event.key==='Enter')openCtx('${s.sessionId}')">context</span>` : ''}
-            ${s.cost && s.cost.totalUsd > 0 ? `<span class="badge cost" title="${esc(costTitle(s.cost))}">${fmtCost(s.cost.totalUsd)}</span>` : ''}
-            ${(s.prNumbers || []).map((n) => `<span class="badge pr">PR #${esc(n)}${s.prState ? ' · ' + esc(s.prState) : ''}</span>`).join('')}
+            ${s.hasContext ? `<span class="badge ctx" tabindex="0" role="button" onclick="openCtx('${s.sessionId}')" onkeydown="if(event.key==='Enter')openCtx('${s.sessionId}')">${icn('ic-brain',11)} context</span>` : ''}
+            ${s.cost && s.cost.totalUsd > 0 ? `<span class="badge cost" title="${esc(costTitle(s.cost))}">${icn('ic-coin',11)} ${fmtCost(s.cost.totalUsd)}</span>` : ''}
+            ${(s.prNumbers || []).map((n) => `<span class="badge pr">${icn('ic-pr',11)} PR #${esc(n)}${s.prState ? ' · ' + esc(s.prState) : ''}</span>`).join('')}
         </div>
         <div class="msgs">
             ${s.lastUser ? `<div class="u"><b>you</b>${esc(s.lastUser)}</div>` : ''}
             ${s.lastAssistant ? `<div class="a"><b>claude</b>${esc(s.lastAssistant)}</div>` : ''}
         </div>
         <div class="actions">
-            <button class="btn" onclick="attach('${s.sessionId}')" title="opens Terminal on your Mac">Open chat</button>
-            <button class="btn" onclick="openSend('${s.sessionId}', false)">Send prompt</button>
-            <button class="btn ghost" onclick="openSend('${s.sessionId}', true)">Fork…</button>
+            <button class="btn${IS_REMOTE ? ' primary' : ''}" onclick="openChat('${s.sessionId}')" title="view the chat in this app">${icn('ic-message')} View chat</button>
+            ${IS_REMOTE ? '' : `<button class="btn" onclick="attach('${s.sessionId}')" title="opens Terminal on your Mac">${icn('ic-terminal')} Terminal</button>`}
+            <button class="btn" onclick="openSend('${s.sessionId}', false)">${icn('ic-send')} Send prompt</button>
+            <button class="btn ghost" onclick="openSend('${s.sessionId}', true)">${icn('ic-fork')} Fork…</button>
         </div>
     </div>`;
 }
@@ -633,11 +833,10 @@ async function load() {
 
 function findSession(id) { return state.sessions.find((s) => s.sessionId === id); }
 
-/* ── actions: attach / send (behavior unchanged) ───────────── */
 async function attach(id, cwd) {
     const dir = cwd ?? findSession(id)?.cwd;
     try {
-        const res = await fetch('/api/attach', { method: 'POST', headers: {'Content-Type':'application/json', 'X-CC':'1'},
+        const res = await fetch('/api/attach', { method: 'POST', headers: {'Content-Type':'application/json','X-CC':'1'},
             body: JSON.stringify({ sessionId: id, cwd: dir }), signal: AbortSignal.timeout(8000) });
         const d = await res.json();
         if (!d.ok) { navigator.clipboard?.writeText(d.command); alert('Could not open Terminal (' + (d.error||'?') + ').\nCommand copied to clipboard:\n' + d.command); }
@@ -666,7 +865,7 @@ document.getElementById('sendGo').onclick = async () => {
     if (!text || !sendTarget) return;
     const s = findSession(sendTarget);
     try {
-        await fetch('/api/send', { method: 'POST', headers: {'Content-Type':'application/json', 'X-CC':'1'},
+        await fetch('/api/send', { method: 'POST', headers: {'Content-Type':'application/json','X-CC':'1'},
             body: JSON.stringify({ sessionId: sendTarget, cwd: s?.cwd, text, fork: document.getElementById('sendFork').checked }),
             signal: AbortSignal.timeout(8000) });
     } catch (err) {
@@ -677,7 +876,6 @@ document.getElementById('sendGo').onclick = async () => {
     loadJobs();
 };
 
-/* ── chat launcher ─────────────────────────────────────────── */
 let debounceTimer = null;
 let lastQuerySent = '';
 let visibleMatches = [];
@@ -700,14 +898,14 @@ function matchHtml(m) {
     <div class="match">
         <span class="dot ${m.status}"></span>
         <div class="info">
-            <div class="t">${esc(m.title || m.sessionId.slice(0, 8))} <span class="meta">· ${esc(m.repo || '?')}</span></div>
+            <div class="t">${esc(m.title || m.sessionId.slice(0,8))} <span class="meta">· ${esc(m.repo || '?')}</span></div>
             <div class="g">${esc(goal)}</div>
         </div>
         ${ringSvg(m.contextPct, 24)}
         <div class="acts">
-            <button class="btn" onclick="attachMatch('${m.sessionId}')" title="opens Terminal on your Mac">Open chat</button>
+            <button class="btn" onclick="${IS_REMOTE ? `openChat('${m.sessionId}')` : `attachMatch('${m.sessionId}')`}" title="${IS_REMOTE ? 'view the chat in this app' : 'opens Terminal on your Mac'}">${icn(IS_REMOTE ? 'ic-message' : 'ic-terminal')} ${IS_REMOTE ? 'View chat' : 'Open chat'}</button>
             <button class="btn" onclick="openSend('${m.sessionId}', false)">Continue here</button>
-            ${m.contextPath ? `<button class="btn primary" onclick="launchWithContext('${m.sessionId}')" title="opens Terminal on your Mac">New chat w/ context</button>` : ''}
+            ${m.contextPath ? `<button class="btn primary" onclick="launchWithContext('${m.sessionId}')" title="opens Terminal on your Mac">${icn('ic-brain')} New chat w/ context</button>` : ''}
         </div>
     </div>`;
 }
@@ -744,7 +942,7 @@ function attachMatch(id) {
 
 async function doLaunch(body, label) {
     try {
-        const res = await fetch('/api/launch', { method: 'POST', headers: {'Content-Type':'application/json', 'X-CC':'1'},
+        const res = await fetch('/api/launch', { method: 'POST', headers: {'Content-Type':'application/json','X-CC':'1'},
             body: JSON.stringify(body), signal: AbortSignal.timeout(8000) });
         const d = await res.json();
         toast(d.ok ? `✅ ${label} — Terminal opened` : `❌ launch failed: ${d.error || '?'}`, d.command);
@@ -804,7 +1002,6 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-/* ── context viewer modal ──────────────────────────────────── */
 let ctxSession = null;
 
 function mdLite(body) {
@@ -839,7 +1036,7 @@ async function openCtx(id) {
         const chips = [meta.repo, ...(meta.tags || [])].filter(Boolean)
             .map((t) => `<span class="badge">${esc(t)}</span>`).join('');
         document.getElementById('ctxMeta').innerHTML = chips +
-            (meta.updated ? `<span class="badge">updated ${esc(String(meta.updated).slice(0, 16))}</span>` : '');
+            (meta.updated ? `<span class="badge">updated ${esc(String(meta.updated).slice(0,16))}</span>` : '');
         document.getElementById('ctxBody').innerHTML = mdLite(d.content.replace(/^---[\s\S]*?---\n/, ''));
         document.getElementById('ctxPath').textContent = d.path;
     } catch (err) {
@@ -877,7 +1074,6 @@ document.getElementById('ctxCopy').onclick = () => {
     setTimeout(() => { document.getElementById('ctxCopy').textContent = 'Copy --resume command'; }, 1200);
 };
 
-/* ── phone access modal ────────────────────────────────────── */
 function wireCopy(btn, text, label) {
     if (!btn) return;
     btn.onclick = () => {
@@ -901,6 +1097,7 @@ async function openPhone() {
     }
     const modeLabel = { tailscale: 'Tailscale (private, HTTPS)', lan: 'Local Wi-Fi (LAN)', off: 'not exposed' }[d.mode] || d.mode;
     document.getElementById('phoneMode').innerHTML = `Transport: <span class="modetag ${esc(d.mode)}">${esc(modeLabel)}</span>`;
+    document.getElementById('phoneGuide').open = (d.mode === 'off');
     const body = document.getElementById('phoneBody');
     if (d.mode === 'off' || !d.url) {
         body.innerHTML = `<p class="meta" style="margin:0 0 10px">No remote transport is active. Set one up on your Mac:</p>
@@ -925,7 +1122,6 @@ async function openPhone() {
 
 document.getElementById('phoneBtn').onclick = openPhone;
 
-/* ── jobs + toasts ─────────────────────────────────────────── */
 let toastSeq = 0;
 
 function toast(text, detail) {
@@ -938,13 +1134,17 @@ function toast(text, detail) {
 function renderJobs() {
     const el = document.getElementById('jobs');
     const jobs = Object.values(state.jobs).sort((a, b) => b.startedAt - a.startedAt).slice(0, 4);
-    const toastHtml = Object.values(state.toasts).map((t) => `
-        <div class="job done">${esc(t.text)}${t.detail ? `<pre>${esc(t.detail)}</pre>` : ''}</div>`).join('');
+    const toastHtml = Object.entries(state.toasts).map(([tid, t]) => `
+        <div class="job done">
+            <button class="job-x" title="dismiss" aria-label="dismiss" onclick="dismissToast('${tid}')">${icn('ic-x', 13)}</button>
+            ${esc(t.text)}${t.detail ? `<pre>${esc(t.detail)}</pre>` : ''}
+        </div>`).join('');
     el.innerHTML = toastHtml + jobs.map((j) => `
     <div class="job ${j.status}">
+        ${j.status !== 'running' ? `<button class="job-x" title="dismiss" aria-label="dismiss" onclick="dismissJobCard(${j.id})">${icn('ic-x', 13)}</button>` : ''}
         <b>${j.status === 'running' ? '⏳' : j.status === 'done' ? '✅' : '❌'} job ${j.id}</b>
-        → ${j.sessionId.slice(0,8)}${j.fork ? ' (fork)' : ''} · ${esc(j.text)}
-        ${j.result?.forked ? `<div style="color:var(--amber)">forked → ${j.result.sessionId.slice(0,8)}</div>` : ''}
+        → ${esc(j.sessionId.slice(0,8))}${j.fork ? ' (fork)' : ''} · ${esc(j.text)}
+        ${j.result?.forked ? `<div style="color:var(--amber)">forked → ${esc(j.result.sessionId.slice(0,8))}</div>` : ''}
         ${j.result?.text ? `<pre>${esc(j.result.text)}</pre>` : ''}
         ${j.error ? `<pre>${esc(j.error)}</pre>` : ''}
         ${j.status === 'running' ? `<button class="btn" style="margin-top:6px" onclick="stopJob(${j.id})">Stop</button>` : ''}
@@ -953,7 +1153,7 @@ function renderJobs() {
 
 async function stopJob(id) {
     try {
-        await fetch('/api/jobs/stop', { method: 'POST', headers: {'Content-Type':'application/json', 'X-CC':'1'},
+        await fetch('/api/jobs/stop', { method: 'POST', headers: {'Content-Type':'application/json','X-CC':'1'},
             body: JSON.stringify({ id }), signal: AbortSignal.timeout(8000) });
     } catch (err) {
         toast('❌ stop failed: ' + err.message);
@@ -961,19 +1161,100 @@ async function stopJob(id) {
     loadJobs();
 }
 
+// Ids the user has dismissed this page-session. A late completion broadcast for
+// one of them must not silently re-add the card the user just closed.
+const dismissedJobs = new Set();
+
+async function dismissJobCard(id) {
+    dismissedJobs.add(id);
+    delete state.jobs[id];
+    renderJobs();
+    try {
+        await fetch('/api/jobs/dismiss', { method: 'POST', headers: {'Content-Type':'application/json','X-CC':'1'},
+            body: JSON.stringify({ id }), signal: AbortSignal.timeout(8000) });
+    } catch {
+        // best-effort: already gone from the UI, and the server prunes finished jobs anyway
+    }
+}
+
+function dismissToast(id) { delete state.toasts[id]; renderJobs(); }
+
 async function loadJobs() {
     try {
         const res = await fetch('/api/jobs', { signal: AbortSignal.timeout(8000) });
         const jobs = await res.json();
         if (!Array.isArray(jobs)) return;
-        for (const j of jobs) state.jobs[j.id] = j;
+        for (const j of jobs) if (!dismissedJobs.has(j.id)) state.jobs[j.id] = j;
         renderJobs();
     } catch {
         // /api/sessions failure already raises the banner; stay quiet here
     }
 }
 
-/* ── filters + SSE + visibility (behavior unchanged) ───────── */
+/* ── in-app chat viewer ────────────────────────────────────── */
+let chatSession = null;
+let chatTimer = null;
+let chatRefetchTimer = null;
+let chatLastTs = 0;
+let chatLastFetchAt = 0;
+
+async function openChat(id) {
+    chatSession = id;
+    chatLastTs = 0;
+    const s = findSession(id);
+    document.getElementById('chatTitle').innerHTML = `${icn('ic-message', 16)} ${esc(s?.title || id)}`;
+    document.getElementById('chatMeta').textContent =
+        s ? `${s.repo}${s.gitBranch ? ' @ ' + s.gitBranch : ''} · ${statusLabel(s.status)}` : '';
+    document.getElementById('chatLive').textContent = '';
+    document.getElementById('chatBody').innerHTML = '<p class="meta">loading…</p>';
+    if (!document.getElementById('chatDialog').open) withVT(() => document.getElementById('chatDialog').showModal());
+    await loadChat(true);
+    clearInterval(chatTimer);
+    // Fallback poll for when SSE misses an event — skipped if an SSE-driven
+    // refetch already ran inside the window, so the two paths don't double up.
+    chatTimer = setInterval(() => {
+        if (document.getElementById('chatDialog').open && Date.now() - chatLastFetchAt > 3500) loadChat(false);
+    }, 4000);
+}
+
+async function loadChat(scrollToEnd) {
+    if (!chatSession) return;
+    chatLastFetchAt = Date.now();
+    const body = document.getElementById('chatBody');
+    try {
+        const res = await fetch('/api/transcript/' + chatSession, { signal: AbortSignal.timeout(8000) });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const msgs = await res.json();
+        if (!Array.isArray(msgs)) throw new Error('unexpected response');
+        renderChat(msgs, scrollToEnd);
+    } catch (err) {
+        if (body.querySelector('.chatmsg')) return;   // keep what we have on a transient error
+        body.innerHTML = `<p class="meta">could not load chat: ${esc(err.message)}</p>`;
+    }
+}
+
+function renderChat(msgs, scrollToEnd) {
+    const body = document.getElementById('chatBody');
+    const lastTs = msgs.length ? msgs[msgs.length - 1].ts : 0;
+    if (lastTs && lastTs === chatLastTs && body.querySelector('.chatmsg')) return;   // nothing new
+    chatLastTs = lastTs;
+    const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 60;
+    body.innerHTML = msgs.length
+        ? msgs.map((m) => `<div class="chatmsg ${m.role === 'user' ? 'user' : 'assistant'}">
+            <span class="who">${m.role === 'user' ? 'you' : 'claude'}</span>
+            <div class="bubble">${esc(m.text)}</div></div>`).join('')
+        : '<p class="meta">no chat messages yet</p>';
+    document.getElementById('chatLive').textContent = msgs.length ? `${msgs.length} message${msgs.length === 1 ? '' : 's'}` : '';
+    if (scrollToEnd || atBottom) body.scrollTop = body.scrollHeight;
+}
+
+document.getElementById('chatSend').onclick = () => { if (chatSession) openSend(chatSession, false); };
+document.getElementById('chatDialog').addEventListener('close', () => {
+    clearInterval(chatTimer); chatTimer = null;
+    clearTimeout(chatRefetchTimer);
+    chatSession = null;
+});
+
 ['q','statusFilter','repoFilter'].forEach((id) => document.getElementById(id).addEventListener('input', render));
 
 // One SSE connection per visible tab. Closing in hidden tabs avoids exhausting
@@ -985,7 +1266,15 @@ function connectEvents() {
     es = new EventSource('/api/events');
     es.addEventListener('sessions', (e) => { const d = JSON.parse(e.data); if (Array.isArray(d)) applySessions(d); });
     es.addEventListener('refresh', load);
-    es.addEventListener('job', (e) => { const j = JSON.parse(e.data); state.jobs[j.id] = j; renderJobs(); });
+    es.addEventListener('job', (e) => { const j = JSON.parse(e.data); if (dismissedJobs.has(j.id)) return; state.jobs[j.id] = j; renderJobs(); });
+    es.addEventListener('transcript', (e) => {
+        let d; try { d = JSON.parse(e.data); } catch { return; }
+        if (!d || d.sessionId !== chatSession) return;
+        if (!document.getElementById('chatDialog').open) return;
+        // Coalesce the burst of file writes during a streaming response.
+        clearTimeout(chatRefetchTimer);
+        chatRefetchTimer = setTimeout(() => loadChat(false), 600);
+    });
 }
 
 function disconnectEvents() {

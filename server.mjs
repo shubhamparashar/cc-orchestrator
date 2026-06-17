@@ -1,17 +1,18 @@
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat, readdir } from 'node:fs/promises';
 import { watch } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { scanSessions, PROJECTS_DIR } from './lib/scan.mjs';
+import { scanSessions, PROJECTS_DIR, readSlice, parseLines, textOfContent, isSyntheticUserText } from './lib/scan.mjs';
 import { liveSessions, SESSIONS_DIR } from './lib/live.mjs';
 import { desktopSessions } from './lib/desktop.mjs';
 import { sessionUsageByModel, pruneUsageCache } from './lib/cost.mjs';
 import { costSummary, loadPricing } from './lib/pricing.mjs';
-import { sendPrompt, listJobs, stopJob, attachInTerminal, attachCommand, buildLaunchCommand, launchInTerminal } from './lib/actions.mjs';
-import { CONTEXTS_DIR, contextPathFor, isSessionUuid, loadIndex, readContext } from './lib/contextStore.mjs';
+import { sendPrompt, listJobs, stopJob, dismissJob, attachInTerminal, attachCommand, buildLaunchCommand, launchInTerminal } from './lib/actions.mjs';
+import { CONTEXTS_DIR, contextPathFor, isSessionUuid, listContextSessions, loadIndex, readContext } from './lib/contextStore.mjs';
+import { buildSessionIndex } from './lib/sessionIndex.mjs';
 import { rankDocs } from './lib/rank.mjs';
 import {
     COOKIE_NAME, getCookie, getToken, hostAllowed, isLocalRequest, isSecureRequest,
@@ -69,14 +70,13 @@ async function attachCost(sessions) {
 }
 
 async function getSessions() {
-    const [liveBySession, desktopBySession, index] = await Promise.all([
+    const [liveBySession, desktopBySession, ctxIds] = await Promise.all([
         liveSessions(),
         desktopSessions(),
-        loadIndex(),
+        listContextSessions(),
     ]);
     const sessions = await scanSessions({ liveBySession, desktopBySession });
-    const contextIds = new Set(index.map((e) => e.sessionId));
-    for (const s of sessions) s.hasContext = contextIds.has(s.sessionId);
+    for (const s of sessions) s.hasContext = ctxIds.has(s.sessionId);
     await attachCost(sessions);
     return sessions;
 }
@@ -91,6 +91,16 @@ function getSessionsShared() {
         });
     }
     return inFlightScan;
+}
+
+// Tier-1 index build over ALL sessions (free, transcript-derived). Single-flight
+// so the startup build, the periodic refresh, and /api/reindex never overlap.
+let inFlightIndex = null;
+function reindex() {
+    if (!inFlightIndex) {
+        inFlightIndex = buildSessionIndex().finally(() => { inFlightIndex = null; });
+    }
+    return inFlightIndex;
 }
 
 let scanTimer = null;
@@ -109,63 +119,80 @@ function scheduleRefresh() {
     }, 1000);
 }
 
-function watchSafe(path, opts) {
+function watchSafe(path, opts, cb = scheduleRefresh) {
     try {
-        watch(path, opts, scheduleRefresh);
+        watch(path, opts, cb);
     } catch (err) {
         console.warn(`watch failed for ${path}: ${err.message}`);
     }
 }
 
+const SESSION_FILE_RE = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/;
+const transcriptBroadcastTimers = new Map();
+
+// A streaming response appends to its .jsonl many times a second; collapse that
+// burst into at most one 'transcript' nudge per session per window.
+function broadcastTranscript(sessionId) {
+    if (transcriptBroadcastTimers.has(sessionId)) return;
+    transcriptBroadcastTimers.set(sessionId, setTimeout(() => {
+        transcriptBroadcastTimers.delete(sessionId);
+        if (sseClients.size) broadcast('transcript', { sessionId });
+    }, 300));
+}
+
+// A project-file change both refreshes the session list and, when it is a
+// transcript write, tells any open in-app chat viewer which session changed.
+function onProjectsChange(eventType, filename) {
+    scheduleRefresh();
+    if (!filename || !sseClients.size) return;
+    const m = String(filename).match(SESSION_FILE_RE);
+    if (m) broadcastTranscript(m[1]);
+}
+
 // Rank candidates for a query (chat launcher) or for a session (modal "related"
-// tab). Docs = context-index entries enriched with live scanner state, plus live
-// sessions that have no context yet (matched on title + last messages).
+// tab). The Tier-1 index already covers ALL sessions (transcript-derived body +
+// any context.md), so we rank it directly and enrich with live scanner state;
+// brand-new sessions not yet in the index are folded in from the live scan.
 async function relatedSessions({ q, repo, forSession }) {
     const [index, sessions] = await Promise.all([loadIndex(), getSessionsShared()]);
     const byId = new Map(sessions.map((s) => [s.sessionId, s]));
     const docs = [];
-    const indexed = new Set();
+    const seen = new Set();
     for (const e of index) {
         if (e.sessionId === forSession) continue;
         const live = byId.get(e.sessionId);
         if (live?.isArchived) continue;
-        indexed.add(e.sessionId);
+        seen.add(e.sessionId);
         docs.push({
             id: e.sessionId,
             title: e.title || live?.title || null,
             tags: e.tags || [],
             goal: e.goal,
             repo: e.repo || live?.repo || null,
-            body: '',
+            body: e.body || '',
             updatedMs: Math.max(e.updated || 0, live?.lastActivityAt || 0),
-            path: e.path,
+            contextPath: e.contextPath || null,
             cwd: e.cwd || live?.cwd || null,
             _live: live || null,
         });
     }
+    // sessions created since the last index build
     for (const s of sessions) {
-        if (indexed.has(s.sessionId) || s.sessionId === forSession || s.isArchived) continue;
+        if (seen.has(s.sessionId) || s.sessionId === forSession || s.isArchived) continue;
         docs.push({
-            id: s.sessionId,
-            title: s.title,
-            tags: [],
-            goal: null,
-            repo: s.repo,
-            body: `${s.lastUser || ''} ${s.lastAssistant || ''}`,
-            updatedMs: s.lastActivityAt,
-            path: null,
-            cwd: s.cwd,
-            _live: s,
+            id: s.sessionId, title: s.title, tags: [s.repo].filter(Boolean), goal: null, repo: s.repo,
+            body: `${s.lastUser || ''} ${s.lastAssistant || ''}`, updatedMs: s.lastActivityAt,
+            contextPath: null, cwd: s.cwd, _live: s,
         });
     }
     let query = q;
     let repoBoost = repo;
     if (forSession && isSessionUuid(forSession)) {
-        const own = await readContext(forSession);
+        const self = index.find((e) => e.sessionId === forSession);
         const ownLive = byId.get(forSession);
-        const tagText = (own?.meta?.tags || []).join(' ');
-        query = [own?.meta?.title, own?.goal, tagText, ownLive?.title].filter(Boolean).join(' ');
-        repoBoost = repoBoost || own?.meta?.repo || ownLive?.repo || null;
+        query = [self?.title, self?.goal, (self?.tags || []).join(' '), self?.body, ownLive?.title]
+            .filter(Boolean).join(' ').slice(0, 1500);
+        repoBoost = repoBoost || self?.repo || ownLive?.repo || null;
     }
     const ranked = rankDocs(query, docs, { repo: repoBoost, limit: 8 });
     return ranked.map(({ doc, score }) => ({
@@ -173,13 +200,58 @@ async function relatedSessions({ q, repo, forSession }) {
         title: doc.title,
         repo: doc.repo,
         goal: doc.goal,
-        contextPath: doc.path,
+        contextPath: doc.contextPath,
         cwd: doc._live?.cwd || doc.cwd,
         status: doc._live?.status || 'idle',
         contextPct: doc._live?.contextPct ?? null,
         updated: doc.updatedMs,
         score: Math.round(score * 10) / 10,
     }));
+}
+
+const TRANSCRIPT_TAIL_BYTES = 512 * 1024;
+const TRANSCRIPT_MAX_MESSAGES = 200;
+
+async function transcriptPathFor(sessionId) {
+    let dirs;
+    try {
+        dirs = await readdir(PROJECTS_DIR);
+    } catch {
+        return null;
+    }
+    for (const dir of dirs) {
+        const p = join(PROJECTS_DIR, dir, `${sessionId}.jsonl`);
+        try {
+            await stat(p);
+            return p;
+        } catch {
+            // not in this project dir
+        }
+    }
+    return null;
+}
+
+// Chat-only view of a transcript: human/assistant text turns only — no tool
+// calls, tool results, thinking, or harness-injected synthetic turns.
+async function readTranscript(path, since = 0) {
+    const st = await stat(path);
+    const start = Math.max(0, st.size - TRANSCRIPT_TAIL_BYTES);
+    const text = await readSlice(path, start, Math.min(st.size, TRANSCRIPT_TAIL_BYTES));
+    const records = parseLines(text);
+    const out = [];
+    for (const r of records) {
+        if (!r || !r.message) continue;
+        const ts = typeof r.timestamp === 'string' ? Date.parse(r.timestamp) : 0;
+        if (since && ts && ts <= since) continue;
+        if (r.type === 'assistant') {
+            const t = textOfContent(r.message.content);
+            if (t && t.trim()) out.push({ role: 'assistant', text: t, ts: ts || 0 });
+        } else if (r.type === 'user' && !r.isMeta) {
+            const t = textOfContent(r.message.content);
+            if (t && t.trim() && !isSyntheticUserText(t)) out.push({ role: 'user', text: t, ts: ts || 0 });
+        }
+    }
+    return out.slice(-TRANSCRIPT_MAX_MESSAGES);
 }
 
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -307,6 +379,10 @@ const handler = async (req, res) => {
         if (req.method === 'GET' && url.pathname === '/api/pricing') {
             return sendJson(res, 200, loadPricing());
         }
+        if (req.method === 'POST' && url.pathname === '/api/reindex') {
+            const entries = await reindex();
+            return sendJson(res, 200, { ok: true, sessions: entries.length });
+        }
         if (req.method === 'GET' && url.pathname === '/api/related') {
             const q = url.searchParams.get('q') || '';
             const repo = url.searchParams.get('repo') || null;
@@ -319,6 +395,14 @@ const handler = async (req, res) => {
             const ctx = await readContext(id);
             if (!ctx) return sendJson(res, 404, { error: 'no context for this session' });
             return sendJson(res, 200, { path: ctx.path, meta: ctx.meta, content: ctx.content, goal: ctx.goal });
+        }
+        if (req.method === 'GET' && url.pathname.startsWith('/api/transcript/')) {
+            const id = url.pathname.slice('/api/transcript/'.length);
+            if (!isSessionUuid(id)) return sendJson(res, 400, { error: 'invalid session id' });
+            const path = await transcriptPathFor(id);
+            if (!path) return sendJson(res, 404, { error: 'no transcript for this session' });
+            const since = Number(url.searchParams.get('since')) || 0;
+            return sendJson(res, 200, await readTranscript(path, since));
         }
         if (req.method === 'POST' && url.pathname === '/api/launch') {
             const { prompt, cwd, sessionId, dry } = await readBody(req);
@@ -358,6 +442,10 @@ const handler = async (req, res) => {
             const { id } = await readBody(req);
             return sendJson(res, 200, { stopped: stopJob(Number(id)) });
         }
+        if (req.method === 'POST' && url.pathname === '/api/jobs/dismiss') {
+            const { id } = await readBody(req);
+            return sendJson(res, 200, { dismissed: dismissJob(Number(id)) });
+        }
         if (req.method === 'POST' && url.pathname === '/api/attach') {
             const { sessionId, cwd } = await readBody(req);
             if (!sessionId) return sendJson(res, 400, { error: 'sessionId required' });
@@ -382,11 +470,15 @@ server.listen(PORT, HOST, () => {
         const link = remoteLink(PORT);
         if (link.url) console.log(`LAN: ${link.url} (token required — open ${link.url}/login?key=… or the 📱 panel)`);
     }
-    watchSafe(PROJECTS_DIR, { recursive: true });
+    watchSafe(PROJECTS_DIR, { recursive: true }, onProjectsChange);
     watchSafe(SESSIONS_DIR, {});
     watchSafe(join(homedir(), 'Library', 'Application Support', 'Claude', 'claude-code-sessions'), {
         recursive: true,
     });
+    // Build the Tier-1 index over ALL sessions on first run (free), then keep it
+    // fresh on an interval. Background — never blocks serving.
+    reindex().then((e) => console.log(`session index: ${e.length} sessions`)).catch(() => {});
+    setInterval(() => { reindex().catch(() => {}); }, 5 * 60 * 1000);
 });
 
 // Browsers may resolve "localhost" to ::1 first; listen there too so those

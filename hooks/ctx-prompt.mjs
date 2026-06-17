@@ -19,8 +19,8 @@ function indexToDocs(index, excludeSessionId) {
     for (const e of index) {
         if (e.sessionId === excludeSessionId) continue;
         docs.push({
-            id: e.sessionId, title: e.title, tags: e.tags, goal: e.goal,
-            repo: e.repo, body: '', updatedMs: e.updated, path: e.path, cwd: e.cwd,
+            id: e.sessionId, title: e.title, tags: e.tags, goal: e.goal, repo: e.repo,
+            body: e.body || '', updatedMs: e.updated, contextPath: e.contextPath, cwd: e.cwd,
         });
     }
     return docs;
@@ -31,7 +31,8 @@ function matchLines(header, matches) {
     for (const { doc } of matches) {
         const goal = doc.goal ? ` — ${doc.goal}` : '';
         lines.push(`- "${doc.title || doc.id.slice(0, 8)}" (${doc.repo || '?'})${goal}`);
-        lines.push(`  context: ${doc.path}   resume: claude --resume ${doc.id}   fork: claude --resume ${doc.id} --fork-session`);
+        const ctx = doc.contextPath ? `context: ${doc.contextPath}   ` : '';
+        lines.push(`  ${ctx}resume: claude --resume ${doc.id}   fork: claude --resume ${doc.id} --fork-session`);
     }
     return lines;
 }

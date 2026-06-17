@@ -1,0 +1,67 @@
+#!/bin/zsh
+# crc — launch a Claude Code session that is BOTH Remote-Control-enabled (visible and
+# controllable from the Claude phone & web app) AND backed by Headroom memory.
+#
+# Why this exists: Remote Control needs a direct, streaming/websocket-capable
+# connection to api.anthropic.com. The Headroom API proxy (ANTHROPIC_BASE_URL set to
+# the local :8787 endpoint) buffers responses and cannot carry RC's control-plane, so
+# a `headroom wrap` session can never be remote-controlled. Headroom *memory*, though,
+# does not need the proxy: it is reachable as a standalone MCP server. So this launcher
+# runs claude DIRECT (no proxy, RC works) and attaches the memory MCP for cross-session
+# recall. Trade-off vs `headroom wrap`: no automatic --learn mining and no prompt
+# compression — only memory search/save.
+#
+# Remote Control activates on its own because ~/.claude/settings.json sets
+# remoteControlAtStartup:true. Run this inside a git repo to use that repo's memory DB.
+# Override the python with CRC_PYBIN if PATH's python3 can't import headroom.
+
+set -e
+
+CLAUDE_BIN="$HOME/.claude/local/claude"
+[[ -x "$CLAUDE_BIN" ]] || { print -u2 "crc: $CLAUDE_BIN not found or not executable"; exit 1; }
+
+# A python that can import the headroom package (the memory MCP lives there): an
+# explicit override, then PATH python3, then the macOS Framework build. Fail loud
+# rather than launch a session whose memory MCP silently dies.
+PYBIN="${CRC_PYBIN:-$(command -v python3 || true)}"
+if [[ -z "$PYBIN" ]] || ! "$PYBIN" -c 'import headroom' >/dev/null 2>&1; then
+    PYBIN="/Library/Frameworks/Python.framework/Versions/3.13/bin/python3"
+fi
+if [[ ! -x "$PYBIN" ]] || ! "$PYBIN" -c 'import headroom' >/dev/null 2>&1; then
+    print -u2 "crc: no python3 that can import 'headroom' (tried CRC_PYBIN, PATH, Framework 3.13)."
+    exit 1
+fi
+
+# Headroom memory DB: repo-local when inside a git repo (resolved from the repo root so
+# it works from any subdirectory), otherwise a single global DB. The repo name (+branch)
+# doubles as the Remote Control session-name prefix, so the phone/web app shows e.g.
+# "fleek-api-staging-..." instead of the default "<hostname>-local-...".
+if REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+    DB="$REPO_ROOT/.headroom/memory.db"
+    RC_PREFIX="$(basename "$REPO_ROOT")"
+    branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    [[ -n "$branch" && "$branch" != HEAD ]] && RC_PREFIX="$RC_PREFIX-$branch"
+else
+    DB="$HOME/.headroom/memory.db"
+    RC_PREFIX="$(scutil --get LocalHostName 2>/dev/null || hostname -s)"
+fi
+mkdir -p "$(dirname "$DB")"
+
+USER_NAME="${USER:-$(id -un)}"
+
+# Per-session MCP config, written by a JSON-aware emitter so paths containing spaces or
+# quotes can't corrupt it. Cleaned up on exit and on interrupt.
+CFG="$(mktemp -t crc-mcp-XXXXXX).json"
+trap 'rm -f "$CFG"' EXIT INT TERM
+"$PYBIN" - "$PYBIN" "$DB" "$USER_NAME" > "$CFG" <<'PY'
+import json, sys
+pybin, db, user = sys.argv[1:4]
+json.dump({"mcpServers": {"headroom_memory": {
+    "command": pybin,
+    "args": ["-m", "headroom.memory.mcp_server", "--db", db, "--user", user],
+}}}, sys.stdout, indent=2)
+PY
+
+# Direct to Anthropic (never the Headroom proxy) so Remote Control can open its channel.
+unset ANTHROPIC_BASE_URL
+"$CLAUDE_BIN" --remote-control-session-name-prefix "$RC_PREFIX" --mcp-config "$CFG" "$@"

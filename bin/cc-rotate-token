@@ -1,0 +1,19 @@
+#!/bin/zsh
+# cc-rotate-token — invalidate the current cc-orchestrator remote-access token.
+#
+# Removes ~/.config/cc-orchestrator/token. A fresh 32-byte token is generated
+# automatically on the next remote access. The running server caches the token in
+# memory, so removal alone does NOT take effect until the server is restarted.
+
+set -e
+
+TOKEN="${HOME}/.config/cc-orchestrator/token"
+
+rm -f "$TOKEN"
+
+print "cc-rotate-token: removed $TOKEN"
+print "A fresh token is generated automatically on the next remote access."
+print ""
+print "Restart the server for rotation to take effect (it caches the token in memory):"
+print "  • plain run:    stop and re-run the server"
+print "  • LaunchAgent:  launchctl kickstart -k gui/\$(id -u)/com.cc-orchestrator"

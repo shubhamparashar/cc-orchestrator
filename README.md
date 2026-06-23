@@ -5,13 +5,44 @@ Read-only over `~/.claude` and the Claude Desktop storage — it never writes to
 
 See [REPORT.md](REPORT.md) for the build-vs-reuse audit, architecture, and phased plan.
 
+## Quickstart
+
+```sh
+git clone <repo> && cd cc-orchestrator
+node server.mjs          # → http://127.0.0.1:7433
+```
+
+Requires **Node ≥ 20** (no npm install — zero dependencies). Open the URL in your browser.
+Optional: `npm i -g .` to get the `cc-orchestrator` / `cc-doctor` / `cc-install-hooks` commands;
+`./install-launchagent.sh` to run it always-on; `./phone-link.sh` for private phone access over
+Tailscale. See [SECURITY.md](SECURITY.md) for the trust model (loopback is unauthenticated; LAN is
+plaintext — prefer Tailscale).
+
+## Onboarding (`doctor` + hooks)
+
+```sh
+node bin/cc-doctor        # preflight: Node, claude on PATH, port, dirs, hooks, perms
+node bin/cc-install-hooks # wire the Phase-2 context hooks into ~/.claude/settings.json
+```
+
+- **`cc-doctor`** prints grouped PASS / WARN / FAIL with a fix for each, and exits non-zero only on
+  a blocking FAIL (Node < 20, no `claude`, port in use, config dir unwritable). Run it first if the
+  dashboard is empty or live refresh seems dead.
+- **`cc-install-hooks`** does the additive `~/.claude/settings.json` merge that turns on the rolling
+  per-session `context.md`, related-session surfacing, and the 70%-context warning — the features a
+  fresh install otherwise ships *without*. It backs up your settings first, is idempotent (re-run
+  safe), preserves any existing hooks, and reverses with `cc-install-hooks --uninstall`. This is the
+  one place the tool writes outside its own config; transcripts are never written. Open a **new**
+  Claude Code session afterwards for the hooks to take effect.
+
 ## Run
 
 ```sh
 node server.mjs          # http://127.0.0.1:7433  (PORT=… to change)
 ```
 
-No dependencies; needs Node ≥ 18.
+No dependencies; needs **Node ≥ 20** — live refresh uses recursive `fs.watch`, which only works
+on Node ≥ 20; on older Node the live refresh silently dies.
 
 ## What it shows (F1)
 

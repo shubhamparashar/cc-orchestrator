@@ -1,0 +1,52 @@
+#!/usr/bin/env node
+// Merge cc-orchestrator's Phase-2 context hooks into ~/.claude/settings.json
+// (additive, idempotent, reversible). Enables rolling context.md, related-session
+// surfacing, and the 70%-context warning. Read-only over transcripts; the only
+// write is the additive settings.json hook block (REPORT.md Phase 2).
+//
+//   cc-install-hooks              install / re-sync the hooks
+//   cc-install-hooks --uninstall  remove only our hooks
+//   cc-install-hooks --help
+
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { hookSpecs, installHooks } from '../lib/onboarding.mjs';
+
+const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+const args = process.argv.slice(2);
+
+if (args.includes('--help') || args.includes('-h')) {
+    console.log('Usage: cc-install-hooks [--uninstall]\n' +
+        '  Wires SessionStart / UserPromptSubmit / Stop / PreCompact into ~/.claude/settings.json.\n' +
+        '  --uninstall  remove only cc-orchestrator hooks (a backup is kept either way).');
+    process.exit(0);
+}
+
+const uninstall = args.includes('--uninstall');
+
+try {
+    const r = installHooks({ repoRoot, uninstall });
+    if (r.action === 'noop') {
+        console.log(uninstall
+            ? 'No cc-orchestrator hooks present — nothing to remove.'
+            : 'Hooks already installed — nothing to do.');
+        process.exit(0);
+    }
+    if (r.backupPath) console.log(`backed up existing settings → ${r.backupPath}`);
+    if (r.action === 'installed') {
+        console.log(`installed hooks (${r.added.join(', ')}) in ${r.settingsPath}`);
+        console.log('Open a NEW Claude Code session for them to take effect.');
+        console.log(`Hook scripts: ${hookSpecs(repoRoot).map((s) => s.script.replace(repoRoot + '/', '')).join(', ')}`);
+        console.log('Uninstall any time: cc-install-hooks --uninstall');
+    } else {
+        console.log(`removed cc-orchestrator hooks (${r.removed.join(', ')}) from ${r.settingsPath}`);
+    }
+    process.exit(0);
+} catch (err) {
+    console.error(`cc-install-hooks: ${err.message}`);
+    if (err instanceof SyntaxError) {
+        console.error('~/.claude/settings.json is not valid JSON — fix it by hand first; nothing was written.');
+    }
+    process.exit(1);
+}

@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { createServer } from 'node:http';
 import { readFile, stat, readdir } from 'node:fs/promises';
 import { watch } from 'node:fs';
@@ -8,7 +9,12 @@ import { fileURLToPath } from 'node:url';
 import { scanSessions, PROJECTS_DIR, readSlice, parseLines, textOfContent, isSyntheticUserText } from './lib/scan.mjs';
 import { liveSessions, SESSIONS_DIR } from './lib/live.mjs';
 import { desktopSessions } from './lib/desktop.mjs';
-import { sessionUsageByModel, pruneUsageCache } from './lib/cost.mjs';
+import { sessionUsageByModel, pruneUsageCache, usageByDateModel, rollupFromDaily, rollupToCsv } from './lib/cost.mjs';
+import { sessionTasks } from './lib/tasks.mjs';
+import { sessionHealth, pruneHealthCache } from './lib/health.mjs';
+import { recentPrompts } from './lib/history.mjs';
+import { log } from './lib/logger.mjs';
+import { sanitizedEnv, issueUrl } from './lib/diag.mjs';
 import { costSummary, loadPricing } from './lib/pricing.mjs';
 import { sendPrompt, listJobs, stopJob, dismissJob, attachInTerminal, attachCommand, buildLaunchCommand, launchInTerminal } from './lib/actions.mjs';
 import { CONTEXTS_DIR, contextPathFor, isSessionUuid, listContextSessions, loadIndex, readContext } from './lib/contextStore.mjs';
@@ -18,6 +24,18 @@ import {
     COOKIE_NAME, getCookie, getToken, hostAllowed, isLocalRequest, isSecureRequest,
     rateLimitKey, recordFailure, remoteLink, setCookieHeader, tokenMatches, tooManyFailures,
 } from './lib/auth.mjs';
+
+// Live refresh relies on recursive fs.watch, which only exists on Node >= 20
+// (older Node throws ERR_FEATURE_UNAVAILABLE_ON_PLATFORM and the watch silently
+// dies). Fail loudly at startup instead of serving a dashboard that never updates.
+const NODE_MAJOR = Number.parseInt(process.versions.node, 10);
+if (Number.isFinite(NODE_MAJOR) && NODE_MAJOR < 20) {
+    console.error(
+        `cc-orchestrator requires Node >= 20 (live refresh uses recursive fs.watch). ` +
+        `You are running Node ${process.versions.node}. Upgrade Node and retry.`,
+    );
+    process.exit(1);
+}
 
 const PORT = Number(process.env.PORT || 7433);
 const LAN_MODE = process.env.CC_LAN === '1';
@@ -69,6 +87,39 @@ async function attachCost(sessions) {
     });
 }
 
+function transcriptPaths(sessions) {
+    const paths = new Map();
+    for (const s of sessions) {
+        paths.set(s, join(PROJECTS_DIR, s.projectDir, `${s.sessionId}.jsonl`));
+    }
+    return paths;
+}
+
+// TodoWrite progress per session (A1) — reads the ~/.claude/tasks mirror by id.
+async function attachTasks(sessions) {
+    await mapLimit(sessions, 8, async (s) => {
+        try {
+            s.tasks = await sessionTasks(s.sessionId);
+        } catch {
+            s.tasks = null;
+        }
+    });
+}
+
+// Tool-mix + error-rate + compaction signals per session (A2). Same (size,mtime)
+// cache discipline as attachCost; prune entries for transcripts no longer listed.
+async function attachHealth(sessions) {
+    const paths = transcriptPaths(sessions);
+    pruneHealthCache(new Set(paths.values()));
+    await mapLimit(sessions, 8, async (s) => {
+        try {
+            s.health = await sessionHealth(paths.get(s));
+        } catch {
+            s.health = null;
+        }
+    });
+}
+
 async function getSessions() {
     const [liveBySession, desktopBySession, ctxIds] = await Promise.all([
         liveSessions(),
@@ -77,7 +128,7 @@ async function getSessions() {
     ]);
     const sessions = await scanSessions({ liveBySession, desktopBySession });
     for (const s of sessions) s.hasContext = ctxIds.has(s.sessionId);
-    await attachCost(sessions);
+    await Promise.all([attachCost(sessions), attachTasks(sessions), attachHealth(sessions)]);
     return sessions;
 }
 
@@ -123,7 +174,7 @@ function watchSafe(path, opts, cb = scheduleRefresh) {
     try {
         watch(path, opts, cb);
     } catch (err) {
-        console.warn(`watch failed for ${path}: ${err.message}`);
+        log.warn(`watch failed for ${path}: ${err.message}`);
     }
 }
 
@@ -379,6 +430,34 @@ const handler = async (req, res) => {
         if (req.method === 'GET' && url.pathname === '/api/pricing') {
             return sendJson(res, 200, loadPricing());
         }
+        if (req.method === 'GET' && url.pathname === '/api/diag') {
+            // Only a loopback caller (the Mac itself, single user) gets the last
+            // server error prefilled — never bleed one viewer's error into another
+            // viewer's report on a shared (Tailscale/LAN) dashboard.
+            return sendJson(res, 200, { env: sanitizedEnv(), issueUrl: issueUrl({ error: local ? lastError : null }) });
+        }
+        if (req.method === 'GET' && url.pathname === '/api/history') {
+            const q = url.searchParams.get('q') || '';
+            const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 100, 1), 500);
+            return sendJson(res, 200, await recentPrompts({ q, limit }));
+        }
+        if (req.method === 'GET' && url.pathname === '/api/cost/rollup') {
+            const w = url.searchParams.get('window');
+            const window = ['day', 'week', 'month'].includes(w) ? w : 'day';
+            const sessions = await getSessionsShared();
+            const pricing = loadPricing();
+            const dailyMaps = await mapLimit(sessions, 8, (s) =>
+                usageByDateModel(join(PROJECTS_DIR, s.projectDir, `${s.sessionId}.jsonl`)).catch(() => ({})));
+            const rollup = rollupFromDaily(dailyMaps, { window, pricing });
+            if (url.searchParams.get('format') === 'csv') {
+                res.writeHead(200, {
+                    'Content-Type': 'text/csv; charset=utf-8',
+                    'Content-Disposition': `attachment; filename="cc-cost-${window}.csv"`,
+                });
+                return res.end(rollupToCsv(rollup));
+            }
+            return sendJson(res, 200, rollup);
+        }
         if (req.method === 'POST' && url.pathname === '/api/reindex') {
             const entries = await reindex();
             return sendJson(res, 200, { ok: true, sessions: entries.length });
@@ -455,20 +534,39 @@ const handler = async (req, res) => {
         }
         sendJson(res, 404, { error: 'not found' });
     } catch (err) {
-        sendJson(res, err.statusCode || 500, { error: err.message });
+        const code = err.statusCode || 500;
+        // Server faults (5xx) feed the consent-gated bug report at /api/diag; client
+        // errors (4xx) are expected and not recorded.
+        if (code >= 500) {
+            lastError = err.stack || err.message;
+            log.error(`${req.method} ${url.pathname} → ${code}: ${err.stack || err.message}`);
+        }
+        sendJson(res, code, { error: err.message });
     }
 };
 
+// Most recent server-side fault, surfaced (sanitized) by /api/diag's issue link.
+let lastError = null;
+
+process.on('unhandledRejection', (reason) => {
+    lastError = reason?.stack || String(reason);
+    log.error(`unhandledRejection: ${reason?.stack || reason}`);
+});
+process.on('uncaughtException', (err) => {
+    log.error(`uncaughtException: ${err?.stack || err}`);
+    process.exit(1); // preserve crash semantics — log, then exit
+});
+
 const server = createServer(handler);
 server.on('error', (err) => {
-    console.error(`listen failed on ${HOST}:${PORT}: ${err.message}`);
+    log.error(`listen failed on ${HOST}:${PORT}: ${err.message}`);
     process.exit(1);
 });
 server.listen(PORT, HOST, () => {
-    console.log(`cc-orchestrator: http://127.0.0.1:${PORT}`);
+    log.info(`cc-orchestrator: http://127.0.0.1:${PORT}`);
     if (LAN_MODE) {
         const link = remoteLink(PORT);
-        if (link.url) console.log(`LAN: ${link.url} (token required — open ${link.url}/login?key=… or the 📱 panel)`);
+        if (link.url) log.info(`LAN: ${link.url} (token required — open ${link.url}/login?key=… or the 📱 panel)`);
     }
     watchSafe(PROJECTS_DIR, { recursive: true }, onProjectsChange);
     watchSafe(SESSIONS_DIR, {});
@@ -477,7 +575,7 @@ server.listen(PORT, HOST, () => {
     });
     // Build the Tier-1 index over ALL sessions on first run (free), then keep it
     // fresh on an interval. Background — never blocks serving.
-    reindex().then((e) => console.log(`session index: ${e.length} sessions`)).catch(() => {});
+    reindex().then((e) => log.info(`session index: ${e.length} sessions`)).catch(() => {});
     setInterval(() => { reindex().catch(() => {}); }, 5 * 60 * 1000);
 });
 

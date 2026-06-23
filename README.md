@@ -35,6 +35,28 @@ node bin/cc-install-hooks # wire the Phase-2 context hooks into ~/.claude/settin
   one place the tool writes outside its own config; transcripts are never written. Open a **new**
   Claude Code session afterwards for the hooks to take effect.
 
+## Troubleshooting
+
+Run `node bin/cc-doctor` first — it diagnoses most of the below and prints a fix for each.
+
+- **Dashboard is empty / "no sessions".** The dashboard reads `~/.claude/projects` — you need at
+  least one Claude Code session on this Mac. `cc-doctor` warns if that directory is missing or empty.
+- **Cards don't live-update (refresh seems dead).** Live refresh uses recursive `fs.watch`, which
+  needs **Node ≥ 20** (older Node fails silently). Check `node -v`; `cc-doctor` flags this as a FAIL.
+  Recursive watch is unsupported on Linux — cc-orchestrator is Mac-only for v1.
+- **Missing context features** (no `context.md`, related sessions, or 70%-context warning). The
+  hooks aren't installed — run `node bin/cc-install-hooks`, then open a **new** Claude Code session.
+- **"Port in use" / server won't start.** Something already holds the port (often a previous
+  instance). Run on another port — `PORT=7456 node server.mjs` — or stop the other process.
+  `cc-doctor` reports whether the port is free.
+- **Can't reach it from your phone.** See [Phone access](#phone-access-remote-control): use
+  Tailscale, and open the tokenized one-tap link once. LAN mode is plaintext — prefer Tailscale.
+- **Where are the logs?** `node bin/cc-logs` (last 200 lines; `-f` to follow). Rotating, `0600`,
+  under `~/.config/cc-orchestrator/logs/`.
+- **Something broke.** Click **Report a bug** in the footer — it opens a GitHub issue prefilled with
+  a sanitized environment summary (no paths, tokens, or PII) and the last error. Nothing is sent
+  automatically; you review and post it yourself.
+
 ## Run
 
 ```sh

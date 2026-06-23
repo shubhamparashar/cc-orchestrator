@@ -1,0 +1,37 @@
+#!/usr/bin/env node
+// Preflight for cc-orchestrator: checks Node, the claude binary, the dashboard
+// port, config/data dirs, installed hooks, token perms, and platform watch
+// support. Prints grouped PASS / WARN / FAIL with remediation; exits 1 on a FAIL.
+
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { runChecks } from '../lib/onboarding.mjs';
+
+const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+const MARK = { pass: '✓', warn: '⚠', fail: '✗' };
+
+const checks = await runChecks({ repoRoot });
+const fails = checks.filter((c) => c.status === 'fail');
+const warns = checks.filter((c) => c.status === 'warn');
+
+console.log('cc-orchestrator doctor\n');
+for (const group of ['fail', 'warn', 'pass']) {
+    const rows = checks.filter((c) => c.status === group);
+    if (!rows.length) continue;
+    console.log(group.toUpperCase());
+    for (const c of rows) {
+        console.log(`  ${MARK[c.status]} ${c.label} — ${c.detail}`);
+        if (c.fix) console.log(`      → ${c.fix}`);
+    }
+    console.log('');
+}
+
+if (fails.length) {
+    console.log(`Not ready: fix ${fails.length} blocking issue${fails.length === 1 ? '' : 's'} above, then run \`node server.mjs\`.`);
+    process.exit(1);
+}
+console.log(warns.length
+    ? `Ready to run \`node server.mjs\` — ${warns.length} optional improvement${warns.length === 1 ? '' : 's'} noted above.`
+    : 'All checks passed — run `node server.mjs`.');
+process.exit(0);

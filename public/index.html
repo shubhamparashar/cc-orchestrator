@@ -637,6 +637,11 @@ label.chk { font-size: 12.5px; color: var(--muted); display: inline-flex; gap: 7
     <div id="grid"><div class="empty">loading…</div></div>
 </main>
 
+<footer style="text-align:center;padding:22px 0 34px">
+    <a id="reportBug" href="https://github.com/shubhamparashar/cc-orchestrator/issues/new" target="_blank" rel="noopener"
+       style="color:var(--muted);font-size:12px;text-decoration:none" title="Opens a prefilled GitHub issue (sanitized — no paths, tokens, or PII)">Report a bug ↗</a>
+</footer>
+
 <dialog id="sendDialog"><div class="dlgpad">
     <h3 id="sendTitle">Send prompt</h3>
     <p class="meta" id="sendCaveat" style="margin:4px 0 10px"></p>
@@ -1013,7 +1018,18 @@ async function load() {
         if (!state.sessions.length) {
             document.getElementById('grid').innerHTML = '<div class="empty">could not load sessions — see the message above</div>';
         }
+        loadDiag(); // refresh the bug-report link with the latest server error
     }
+}
+
+// Point the "Report a bug" link at a prefilled (sanitized) GitHub issue; falls
+// back to a plain issues/new URL if /api/diag is unreachable.
+async function loadDiag() {
+    try {
+        const res = await fetch('/api/diag', { signal: AbortSignal.timeout(8000) });
+        const d = await res.json();
+        if (d.issueUrl) document.getElementById('reportBug').href = d.issueUrl;
+    } catch { /* keep the plain fallback href */ }
 }
 
 function findSession(id) { return state.sessions.find((s) => s.sessionId === id); }
@@ -1564,6 +1580,7 @@ if (!document.hidden) connectEvents();
 setInterval(() => { if (!document.hidden) load(); }, 20000);
 load();
 loadJobs();
+loadDiag();
 </script>
 </body>
 </html>

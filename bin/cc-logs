@@ -1,0 +1,30 @@
+#!/usr/bin/env node
+// Print (or follow) the rotating cc-orchestrator log.
+//   cc-logs            last 200 lines
+//   cc-logs -n 50      last 50 lines
+//   cc-logs -f         follow (tail -f)
+
+import { spawn } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+
+import { logFile } from '../lib/logger.mjs';
+
+const file = logFile();
+const args = process.argv.slice(2);
+
+if (args.includes('--help') || args.includes('-h')) {
+    console.log(`Usage: cc-logs [-f|--follow] [-n N]\n  Prints the cc-orchestrator log (${file}).`);
+    process.exit(0);
+}
+if (!existsSync(file)) {
+    console.log(`No log yet at ${file} — start the server first (node server.mjs).`);
+    process.exit(0);
+}
+if (args.includes('-f') || args.includes('--follow')) {
+    spawn('tail', ['-f', file], { stdio: 'inherit' });
+} else {
+    const i = args.indexOf('-n');
+    const n = i >= 0 ? Math.max(1, Number(args[i + 1]) || 200) : 200;
+    const lines = readFileSync(file, 'utf8').split('\n');
+    process.stdout.write(`${lines.slice(-(n + 1)).join('\n')}\n`);
+}

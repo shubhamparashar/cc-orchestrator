@@ -3,7 +3,12 @@
   "version": "1.0.0",
   "description": "Local-first, read-only web+phone dashboard over all your Claude Code sessions — status board, lifetime cost, history search, health signals.",
   "type": "module",
-  "bin": { "cc-orchestrator": "server.mjs" },
+  "bin": {
+    "cc-orchestrator": "server.mjs",
+    "cc-doctor": "bin/cc-doctor",
+    "cc-install-hooks": "bin/cc-install-hooks",
+    "cc-logs": "bin/cc-logs"
+  },
   "main": "server.mjs",
   "scripts": {
     "start": "node server.mjs",

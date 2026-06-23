@@ -13,6 +13,8 @@ import { sessionUsageByModel, pruneUsageCache, usageByDateModel, rollupFromDaily
 import { sessionTasks } from './lib/tasks.mjs';
 import { sessionHealth, pruneHealthCache } from './lib/health.mjs';
 import { recentPrompts } from './lib/history.mjs';
+import { log } from './lib/logger.mjs';
+import { sanitizedEnv, issueUrl } from './lib/diag.mjs';
 import { costSummary, loadPricing } from './lib/pricing.mjs';
 import { sendPrompt, listJobs, stopJob, dismissJob, attachInTerminal, attachCommand, buildLaunchCommand, launchInTerminal } from './lib/actions.mjs';
 import { CONTEXTS_DIR, contextPathFor, isSessionUuid, listContextSessions, loadIndex, readContext } from './lib/contextStore.mjs';
@@ -172,7 +174,7 @@ function watchSafe(path, opts, cb = scheduleRefresh) {
     try {
         watch(path, opts, cb);
     } catch (err) {
-        console.warn(`watch failed for ${path}: ${err.message}`);
+        log.warn(`watch failed for ${path}: ${err.message}`);
     }
 }
 
@@ -428,6 +430,12 @@ const handler = async (req, res) => {
         if (req.method === 'GET' && url.pathname === '/api/pricing') {
             return sendJson(res, 200, loadPricing());
         }
+        if (req.method === 'GET' && url.pathname === '/api/diag') {
+            // Only a loopback caller (the Mac itself, single user) gets the last
+            // server error prefilled — never bleed one viewer's error into another
+            // viewer's report on a shared (Tailscale/LAN) dashboard.
+            return sendJson(res, 200, { env: sanitizedEnv(), issueUrl: issueUrl({ error: local ? lastError : null }) });
+        }
         if (req.method === 'GET' && url.pathname === '/api/history') {
             const q = url.searchParams.get('q') || '';
             const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 100, 1), 500);
@@ -526,20 +534,39 @@ const handler = async (req, res) => {
         }
         sendJson(res, 404, { error: 'not found' });
     } catch (err) {
-        sendJson(res, err.statusCode || 500, { error: err.message });
+        const code = err.statusCode || 500;
+        // Server faults (5xx) feed the consent-gated bug report at /api/diag; client
+        // errors (4xx) are expected and not recorded.
+        if (code >= 500) {
+            lastError = err.stack || err.message;
+            log.error(`${req.method} ${url.pathname} → ${code}: ${err.stack || err.message}`);
+        }
+        sendJson(res, code, { error: err.message });
     }
 };
 
+// Most recent server-side fault, surfaced (sanitized) by /api/diag's issue link.
+let lastError = null;
+
+process.on('unhandledRejection', (reason) => {
+    lastError = reason?.stack || String(reason);
+    log.error(`unhandledRejection: ${reason?.stack || reason}`);
+});
+process.on('uncaughtException', (err) => {
+    log.error(`uncaughtException: ${err?.stack || err}`);
+    process.exit(1); // preserve crash semantics — log, then exit
+});
+
 const server = createServer(handler);
 server.on('error', (err) => {
-    console.error(`listen failed on ${HOST}:${PORT}: ${err.message}`);
+    log.error(`listen failed on ${HOST}:${PORT}: ${err.message}`);
     process.exit(1);
 });
 server.listen(PORT, HOST, () => {
-    console.log(`cc-orchestrator: http://127.0.0.1:${PORT}`);
+    log.info(`cc-orchestrator: http://127.0.0.1:${PORT}`);
     if (LAN_MODE) {
         const link = remoteLink(PORT);
-        if (link.url) console.log(`LAN: ${link.url} (token required — open ${link.url}/login?key=… or the 📱 panel)`);
+        if (link.url) log.info(`LAN: ${link.url} (token required — open ${link.url}/login?key=… or the 📱 panel)`);
     }
     watchSafe(PROJECTS_DIR, { recursive: true }, onProjectsChange);
     watchSafe(SESSIONS_DIR, {});
@@ -548,7 +575,7 @@ server.listen(PORT, HOST, () => {
     });
     // Build the Tier-1 index over ALL sessions on first run (free), then keep it
     // fresh on an interval. Background — never blocks serving.
-    reindex().then((e) => console.log(`session index: ${e.length} sessions`)).catch(() => {});
+    reindex().then((e) => log.info(`session index: ${e.length} sessions`)).catch(() => {});
     setInterval(() => { reindex().catch(() => {}); }, 5 * 60 * 1000);
 });
 

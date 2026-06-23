@@ -6,7 +6,8 @@
   "bin": {
     "cc-orchestrator": "server.mjs",
     "cc-doctor": "bin/cc-doctor",
-    "cc-install-hooks": "bin/cc-install-hooks"
+    "cc-install-hooks": "bin/cc-install-hooks",
+    "cc-logs": "bin/cc-logs"
   },
   "main": "server.mjs",
   "scripts": {

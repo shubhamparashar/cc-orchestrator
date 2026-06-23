@@ -47,6 +47,15 @@ else
 fi
 mkdir -p "$(dirname "$DB")"
 
+# Name the Remote Control session. If a task was given (`crc "fix the pricing bug"`), name
+# it for that feature ALONE — exact name, no host/repo prefix — and the task also becomes
+# message 1, so the session opens WITH context. Otherwise fall back to the repo (+branch).
+RC_NAME_ARGS=(--remote-control-session-name-prefix "$RC_PREFIX")
+if [[ -n "${1:-}" && "$1" != -* ]]; then
+    slug="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-*//; s/-*$//' | cut -c1-48)"
+    [[ -n "$slug" ]] && RC_NAME_ARGS=(--remote-control "$slug")
+fi
+
 USER_NAME="${USER:-$(id -un)}"
 
 # Per-session MCP config, written by a JSON-aware emitter so paths containing spaces or
@@ -64,4 +73,4 @@ PY
 
 # Direct to Anthropic (never the Headroom proxy) so Remote Control can open its channel.
 unset ANTHROPIC_BASE_URL
-"$CLAUDE_BIN" --remote-control-session-name-prefix "$RC_PREFIX" --mcp-config "$CFG" "$@"
+"$CLAUDE_BIN" "${RC_NAME_ARGS[@]}" --mcp-config "$CFG" "$@"

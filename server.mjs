@@ -12,6 +12,7 @@ import { desktopSessions } from './lib/desktop.mjs';
 import { sessionUsageByModel, pruneUsageCache, usageByDateModel, rollupFromDaily, rollupToCsv } from './lib/cost.mjs';
 import { sessionTasks } from './lib/tasks.mjs';
 import { sessionHealth, pruneHealthCache } from './lib/health.mjs';
+import { recentPrompts } from './lib/history.mjs';
 import { costSummary, loadPricing } from './lib/pricing.mjs';
 import { sendPrompt, listJobs, stopJob, dismissJob, attachInTerminal, attachCommand, buildLaunchCommand, launchInTerminal } from './lib/actions.mjs';
 import { CONTEXTS_DIR, contextPathFor, isSessionUuid, listContextSessions, loadIndex, readContext } from './lib/contextStore.mjs';
@@ -426,6 +427,11 @@ const handler = async (req, res) => {
         }
         if (req.method === 'GET' && url.pathname === '/api/pricing') {
             return sendJson(res, 200, loadPricing());
+        }
+        if (req.method === 'GET' && url.pathname === '/api/history') {
+            const q = url.searchParams.get('q') || '';
+            const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 100, 1), 500);
+            return sendJson(res, 200, await recentPrompts({ q, limit }));
         }
         if (req.method === 'GET' && url.pathname === '/api/cost/rollup') {
             const w = url.searchParams.get('window');

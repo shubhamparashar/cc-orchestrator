@@ -343,6 +343,15 @@ main { padding: 12px clamp(14px,3vw,26px) 90px; max-width: 1380px; margin: 0 aut
 .rolltable td.usd { color: var(--gold); font-weight: 650; }
 .rollwrap { max-height: 48vh; overflow: auto; border-radius: var(--r-md); border: 1.5px solid rgba(255,255,255,.6); box-shadow: var(--clay-in); background: var(--inner); }
 
+/* ── prompt-history palette (A6) ─────────────────────────── */
+.histlist { max-height: 52vh; overflow: auto; margin: 10px 0; display: flex; flex-direction: column; gap: 5px; }
+.histrow { display: flex; align-items: baseline; gap: 10px; padding: 8px 11px; border-radius: var(--r-md); background: var(--inner); box-shadow: var(--clay-in); cursor: pointer; border: 1.5px solid transparent; }
+.histrow:hover { border-color: rgba(99,102,241,.4); }
+.histrow .p { flex: 1; min-width: 0; font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.histrow .r { font-size: 11px; color: var(--muted); font-family: ui-monospace,'SF Mono',monospace; flex-shrink: 0; }
+.histrow .when { font-size: 11px; color: var(--dim); flex-shrink: 0; min-width: 56px; text-align: right; }
+.histrow.cmd .p { color: var(--purple); font-family: ui-monospace,'SF Mono',monospace; }
+
 /* ── dialogs ─────────────────────────────────────────────── */
 dialog {
     background: var(--card); color: var(--text);
@@ -592,6 +601,9 @@ label.chk { font-size: 12.5px; color: var(--muted); display: inline-flex; gap: 7
     <button class="iconbtn" id="costBtn" title="Cost over time (day/week/month) + export">
         <svg class="icon" width="15" height="15"><use href="#ic-chart"/></svg> cost
     </button>
+    <button class="iconbtn" id="histBtn" title="Prompt history across all sessions">
+        <svg class="icon" width="15" height="15"><use href="#ic-message"/></svg> prompts
+    </button>
     <button class="iconbtn" id="phoneBtn" title="Open on your phone">
         <svg class="icon" width="15" height="15"><use href="#ic-phone"/></svg> phone
     </button>
@@ -696,6 +708,17 @@ label.chk { font-size: 12.5px; color: var(--muted); display: inline-flex; gap: 7
         <a class="btn" id="costCsv" href="#" download>Download CSV</a>
         <a class="btn" id="costJson" href="#" target="_blank" rel="noopener">JSON</a>
         <button class="btn" onclick="closeDlg('costDialog')">Close</button>
+    </div>
+</div></dialog>
+
+<dialog id="histDialog"><div class="dlgpad">
+    <h3><svg class="icon" width="17" height="17"><use href="#ic-message"/></svg> Prompt history</h3>
+    <p class="meta" style="margin:4px 0 10px">Every prompt you've typed across all sessions (most recent first). Common secrets are redacted.</p>
+    <input type="search" id="histQ" class="input" placeholder="Search prompts &amp; repos…" autocomplete="off" style="width:100%;box-sizing:border-box">
+    <div class="histlist" id="histList"><div class="meta" style="padding:18px 4px">loading…</div></div>
+    <div class="dlgrow">
+        <span class="meta" id="histMeta" style="flex:1;min-width:0"></span>
+        <button class="btn" onclick="closeDlg('histDialog')">Close</button>
     </div>
 </div></dialog>
 
@@ -1322,6 +1345,52 @@ document.querySelectorAll('#costTabs .tab').forEach((t) => {
     t.onclick = () => setCostWindow(t.dataset.window);
     t.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCostWindow(t.dataset.window); } };
 });
+
+/* ── prompt-history palette (A6) ───────────────────────────── */
+let histTimer = null;
+
+function openHistory() {
+    withVT(() => document.getElementById('histDialog').showModal());
+    document.getElementById('histQ').value = '';
+    loadHistory('');
+    setTimeout(() => document.getElementById('histQ').focus(), 60);
+}
+
+async function loadHistory(q) {
+    const list = document.getElementById('histList');
+    try {
+        const res = await fetch(`/api/history?q=${encodeURIComponent(q)}&limit=300`, { signal: AbortSignal.timeout(8000) });
+        const rows = await res.json();
+        document.getElementById('histMeta').textContent = `${rows.length} prompt${rows.length === 1 ? '' : 's'}`;
+        if (!rows.length) { list.innerHTML = '<div class="meta" style="padding:18px 4px">no matching prompts</div>'; return; }
+        list.innerHTML = rows.map((e) => {
+            const cmd = e.display.trimStart().startsWith('/');
+            const sid = e.sessionId ? ` data-id="${esc(e.sessionId)}" data-cwd="${esc(e.cwd || '')}"` : '';
+            const title = e.sessionId ? 'Open this session in Terminal (on your Mac)' : 'No session id recorded for this prompt';
+            return `<div class="histrow${cmd ? ' cmd' : ''}"${sid} title="${esc(title)}">
+                <span class="p">${esc(e.display)}</span>
+                <span class="r">${esc(e.repo || '·')}</span>
+                <span class="when">${e.at ? relTime(e.at) : ''}</span>
+            </div>`;
+        }).join('');
+    } catch (err) {
+        list.innerHTML = `<div class="meta" style="padding:18px 4px">could not load: ${esc(err.message)}</div>`;
+    }
+}
+
+document.getElementById('histBtn').onclick = openHistory;
+document.getElementById('histQ').oninput = (e) => {
+    clearTimeout(histTimer);
+    const q = e.target.value;
+    histTimer = setTimeout(() => loadHistory(q), 150);
+};
+document.getElementById('histList').onclick = (e) => {
+    const row = e.target.closest('.histrow[data-id]');
+    if (!row) return;
+    closeDlg('histDialog');
+    attach(row.dataset.id, row.dataset.cwd || undefined);
+    toast('↗ opening session in Terminal (on your Mac)');
+};
 
 let toastSeq = 0;
 

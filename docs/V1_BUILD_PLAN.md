@@ -26,8 +26,10 @@ no reordering needed. One-line rationale per item:
 | — | **Productization** (LICENSE, package.json+gate, SECURITY+rotate+opt-in, README quickstart) | H | S–M | The gate between "author's tool" and "product"; parallelizes cleanly as new files. |
 
 Stretch (only if all green): A4 compaction markers (already counted by health → cheap badge), A8
-status chips, A3 active-time, A6 prompt palette. Out of scope (Section D non-goals): team/multi-
-tenant, `.app`/Electron, backend telemetry, live steering.
+status chips, A3 active-time, **A6 prompt palette ✅ landed (see §6)**. Out of scope (Section D
+non-goals): team/multi-tenant, `.app`/Electron, backend telemetry, live steering. A3 evaluated and
+**dropped** — `turn_duration` records are sparse (≈15 of ~70 transcripts), so honest active-time
+would be null for most sessions.
 
 ---
 
@@ -178,3 +180,35 @@ before any step was marked done. Chronological:
 
 **Not committed** (per instructions: stop after local verification). `bin/crc` shows as modified in
 `git status` but that predates this session — not part of this slice.
+
+---
+
+## 6. Stretch landed — A6 cross-session prompt palette (session 7)
+
+Picked as the best value÷effort stretch item after the committed slice landed: A3 was dropped
+(sparse `turn_duration` data), A4's count already ships a badge. A6 is genuinely new and high-value
+for a multi-repo solo user, and reuses existing patterns (modal + `attach` action).
+
+**Files (disjoint — chokepoints `server.mjs`/`public/index.html` edited as sole owner):**
+- NEW `lib/history.mjs` — `redact()`, pure `parseHistory(text,{q,limit})`, `recentPrompts({q,limit})`
+  over the rolling ~93-entry `~/.claude/history.jsonl`. Read-only; lexical substring search (no
+  model calls). `display`+`project`(→repo/cwd)+`sessionId`+`timestamp(ms)`, newest-first, redacted.
+- NEW `test/history.test.mjs` — redaction (incl. the tokenized `/login?key=` link, JWT, bearer,
+  `DB_PASSWORD=`/`GH_TOKEN=` underscore labels, `postgres://user:pass@`) + false-positive guards
+  (`keyboard:`, `monkey=`, 40-char SHA untouched) + parse (sort/filter/limit/garbage tolerance).
+- `server.mjs` — `GET /api/history?q=&limit=` (limit clamped ≤500).
+- `public/index.html` — header **prompts** button → `#histDialog` palette (debounced search,
+  slash-commands styled, repo + relative-time, click a row → open that session via `attach`).
+
+**Security:** the palette is phone-reachable over Tailscale, so prompt text is redacted before
+render. An adversarial review (2 agents) flagged that the original `\b(label)=` rule missed
+underscore-prefixed env vars and that JWT/bearer/DB-URL secrets leaked; redaction was hardened to
+cover those and the UI copy softened to "Common secrets are redacted" (best-effort, not a guarantee).
+
+| Exit test | Result |
+|---|---|
+| `node --test test/history.test.mjs` | ✅ 7/7 |
+| full suite `node --test` | ✅ **19/19**; `node --check` clean on all 20 `.mjs` |
+| `curl …/api/history` redaction | ✅ 93 rows, **0 raw-token leaks**, login-link + `GH_TOKEN=` redacted |
+| `?q=` filter | ✅ server-side case-insensitive substring (e.g. `session`→1, reset→93) |
+| palette UI (Claude Preview MCP) | ✅ 93 rows render, 11 slash-commands styled, 2 redacted in DOM, 0 DOM leaks, no console errors; updated copy verified |

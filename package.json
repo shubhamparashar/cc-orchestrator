@@ -18,6 +18,6 @@
   "dependencies": {},
   "license": "MIT",
   "author": "Shubham Parashar <shubham.p@joinfleek.com>",
-  "files": ["server.mjs", "lib/", "public/", "bin/", "hooks/", "jobs/", "README.md", "REPORT.md", "LICENSE", "SECURITY.md"],
+  "files": ["server.mjs", "lib/", "public/", "bin/", "hooks/", "jobs/", "README.md", "REPORT.md", "LICENSE", "SECURITY.md", "CHANGELOG.md"],
   "keywords": ["claude-code", "dashboard", "local-first", "read-only", "cli"]
 }

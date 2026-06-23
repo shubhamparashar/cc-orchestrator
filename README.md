@@ -5,13 +5,26 @@ Read-only over `~/.claude` and the Claude Desktop storage — it never writes to
 
 See [REPORT.md](REPORT.md) for the build-vs-reuse audit, architecture, and phased plan.
 
+## Quickstart
+
+```sh
+git clone <repo> && cd cc-orchestrator
+node server.mjs          # → http://127.0.0.1:7433
+```
+
+Requires **Node ≥ 20** (no npm install — zero dependencies). Open the URL in your browser.
+Optional: `npm i -g .` to get a `cc-orchestrator` command; `./install-launchagent.sh` to run it
+always-on; `./phone-link.sh` for private phone access over Tailscale. See [SECURITY.md](SECURITY.md)
+for the trust model (loopback is unauthenticated; LAN is plaintext — prefer Tailscale).
+
 ## Run
 
 ```sh
 node server.mjs          # http://127.0.0.1:7433  (PORT=… to change)
 ```
 
-No dependencies; needs Node ≥ 18.
+No dependencies; needs **Node ≥ 20** — live refresh uses recursive `fs.watch`, which only works
+on Node ≥ 20; on older Node the live refresh silently dies.
 
 ## What it shows (F1)
 

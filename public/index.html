@@ -292,6 +292,57 @@ main { padding: 12px clamp(14px,3vw,26px) 90px; max-width: 1380px; margin: 0 aut
 .badges { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .empty { color: var(--muted); text-align: center; padding: 56px; }
 
+/* ── status-bucketed board ───────────────────────────────── */
+/* #grid keeps an id selector, so the board overrides must out-specify it. */
+#grid.board { grid-template-columns: repeat(4, minmax(0,1fr)); gap: 16px; align-items: start; }
+.col { display: flex; flex-direction: column; gap: 13px; min-width: 0; }
+.colhead {
+    display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+    border-radius: var(--r-md); background: var(--surface);
+    border: 1.5px solid rgba(255,255,255,.6); box-shadow: var(--clay-sm);
+    position: sticky; top: 8px; z-index: 2;
+}
+.colhead .lbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--dim); }
+.colhead .n { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums;
+    background: var(--inner); border-radius: 999px; padding: 2px 9px; box-shadow: var(--clay-sm); }
+.col.waiting .colhead { border-color: rgba(232,160,62,.4); }
+.col.working .colhead { border-color: rgba(53,168,116,.4); }
+.colempty { color: var(--muted); font-size: 12px; text-align: center; padding: 18px 8px; opacity: .7; }
+.colmore { color: var(--muted); font-size: 11.5px; text-align: center; padding: 6px; }
+.col .card { container-type: normal; }
+@media (max-width: 1100px) { #grid.board { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (max-width: 700px)  { #grid.board { grid-template-columns: 1fr; } .colhead { position: static; } }
+
+/* ── task progress bar (A1) ──────────────────────────────── */
+.prog { display: grid; gap: 4px; }
+.progbar { height: 6px; border-radius: 999px; background: rgba(100,140,180,.18); overflow: hidden; box-shadow: var(--clay-in); }
+.progbar > span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-lt), var(--green)); transition: width .5s cubic-bezier(.22,.8,.18,1); }
+.proglabel { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; display: flex; gap: 7px; flex-wrap: wrap; }
+.proglabel .ip { color: var(--accent-dk); }
+.proglabel .bl { color: var(--red); }
+
+/* ── tool-mix / error-rate health (A2) ───────────────────── */
+.health { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.hgauge { display: inline-flex; align-items: center; gap: 5px; font-weight: 650; padding: 2px 8px; border-radius: 999px;
+    border: 1px solid; background: var(--inner); box-shadow: var(--clay-sm); }
+.hgauge.ok   { color: var(--green); border-color: rgba(53,168,116,.32); }
+.hgauge.warn { color: var(--amber); border-color: rgba(232,160,62,.36); }
+.hgauge.bad  { color: var(--red);   border-color: rgba(224,85,85,.4); }
+.hgauge .gdot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.health .toptool { font-family: ui-monospace,'SF Mono',monospace; font-size: 10.5px; color: var(--dim); }
+.health .retry { color: var(--red); font-weight: 700; }
+.badge.meta-f { color: var(--muted); background: var(--inner); border-color: rgba(255,255,255,.6); }
+.badge.compact { color: var(--purple); border-color: rgba(144,104,200,.3); background: rgba(144,104,200,.08); }
+
+/* ── cost-rollup modal ───────────────────────────────────── */
+.costtabs { display: flex; gap: 5px; margin: 4px 0 12px; }
+.rolltable { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.rolltable th, .rolltable td { text-align: right; padding: 6px 9px; border-bottom: 1px solid rgba(100,140,180,.16); }
+.rolltable th:first-child, .rolltable td:first-child { text-align: left; font-weight: 600; }
+.rolltable th { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+.rolltable td.usd { color: var(--gold); font-weight: 650; }
+.rollwrap { max-height: 48vh; overflow: auto; border-radius: var(--r-md); border: 1.5px solid rgba(255,255,255,.6); box-shadow: var(--clay-in); background: var(--inner); }
+
 /* ── dialogs ─────────────────────────────────────────────── */
 dialog {
     background: var(--card); color: var(--text);
@@ -512,6 +563,12 @@ label.chk { font-size: 12.5px; color: var(--muted); display: inline-flex; gap: 7
     <symbol id="ic-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M18 6 6 18M6 6l12 12"/>
     </symbol>
+    <symbol id="ic-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6" rx="1"/><rect x="13" y="7" width="3" height="10" rx="1"/><rect x="19" y="13" width="0.5" height="4"/>
+    </symbol>
+    <symbol id="ic-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 12h4l3 7 4-14 3 7h4"/>
+    </symbol>
   </defs>
 </svg>
 
@@ -532,6 +589,9 @@ label.chk { font-size: 12.5px; color: var(--muted); display: inline-flex; gap: 7
         <option value="archived">archived</option>
     </select>
     <select id="repoFilter"><option value="">all repos</option></select>
+    <button class="iconbtn" id="costBtn" title="Cost over time (day/week/month) + export">
+        <svg class="icon" width="15" height="15"><use href="#ic-chart"/></svg> cost
+    </button>
     <button class="iconbtn" id="phoneBtn" title="Open on your phone">
         <svg class="icon" width="15" height="15"><use href="#ic-phone"/></svg> phone
     </button>
@@ -619,6 +679,23 @@ label.chk { font-size: 12.5px; color: var(--muted); display: inline-flex; gap: 7
     </details>
     <div class="dlgrow">
         <button class="btn" onclick="closeDlg('phoneDialog')">Close</button>
+    </div>
+</div></dialog>
+
+<dialog id="costDialog"><div class="dlgpad">
+    <h3><svg class="icon" width="17" height="17"><use href="#ic-chart"/></svg> Cost over time</h3>
+    <p class="meta" id="costMeta" style="margin:4px 0 10px"></p>
+    <div class="costtabs" id="costTabs">
+        <span class="tab active" data-window="day" tabindex="0" role="button">Day</span>
+        <span class="tab" data-window="week" tabindex="0" role="button">Week</span>
+        <span class="tab" data-window="month" tabindex="0" role="button">Month</span>
+    </div>
+    <div class="rollwrap"><table class="rolltable" id="rollTable"><tbody><tr><td class="meta">loading…</td></tr></tbody></table></div>
+    <div class="dlgrow">
+        <span class="meta" style="flex:1;min-width:0">UTC buckets · cumulative API spend</span>
+        <a class="btn" id="costCsv" href="#" download>Download CSV</a>
+        <a class="btn" id="costJson" href="#" target="_blank" rel="noopener">JSON</a>
+        <button class="btn" onclick="closeDlg('costDialog')">Close</button>
     </div>
 </div></dialog>
 
@@ -722,6 +799,64 @@ function statusLabel(s) {
     return { 'running':'running','waiting-on-input':'waiting','open-idle':'open','idle':'idle','archived':'archived' }[s] || s;
 }
 
+function fmtDur(ms) {
+    const s = Math.round(ms / 1000);
+    if (s < 3600) return Math.max(1, Math.round(s / 60)) + 'm';
+    if (s < 86400) return (s / 3600).toFixed(s < 36000 ? 1 : 0) + 'h';
+    return Math.round(s / 86400) + 'd';
+}
+
+// model / effort / permission-mode / uptime — fields the join already had but
+// the card never surfaced (A7).
+function metaBadges(s) {
+    const out = [];
+    if (s.model) out.push(`<span class="badge meta-f" title="model">${esc(String(s.model).replace(/^claude-/, '').replace(/\[1m\]/, ' 1m'))}</span>`);
+    if (s.effort) out.push(`<span class="badge meta-f" title="reasoning effort">${esc(s.effort)}</span>`);
+    if (s.permissionMode && s.permissionMode !== 'default') out.push(`<span class="badge meta-f" title="permission mode">${esc(s.permissionMode)}</span>`);
+    if (s.startedAt && ['running', 'waiting-on-input', 'open-idle'].includes(s.status)) {
+        out.push(`<span class="badge meta-f" title="process uptime">up ${fmtDur(Date.now() - s.startedAt)}</span>`);
+    }
+    return out.join('');
+}
+
+function topTool(byTool) {
+    let name = null;
+    let n = -1;
+    for (const [k, v] of Object.entries(byTool || {})) {
+        if (v > n) { n = v; name = k; }
+    }
+    return name ? { name, n } : null;
+}
+
+function progressBlock(s) {
+    const t = s.tasks;
+    if (!t || !t.total) return '';
+    const pct = Math.round((t.done / t.total) * 100);
+    const parts = [`<span><b>${t.done}/${t.total}</b> done</span>`];
+    if (t.inProgress) parts.push(`<span class="ip">${t.inProgress} in progress</span>`);
+    if (t.blocked) parts.push(`<span class="bl">${t.blocked} blocked</span>`);
+    const tip = (t.items || []).slice(0, 12).map((i) => `${i.status === 'completed' ? '✓' : i.status === 'in_progress' ? '▸' : '○'} ${i.subject || ''}`).join('\n');
+    return `<div class="prog" title="${esc(tip)}">
+        <div class="progbar"><span style="width:${pct}%"></span></div>
+        <div class="proglabel">${parts.join('')}</div>
+    </div>`;
+}
+
+function healthBlock(s) {
+    const h = s.health;
+    if (!h || !h.totalCalls) return '';
+    const cls = h.errorRate >= 15 ? 'bad' : h.errorRate >= 5 ? 'warn' : 'ok';
+    const tt = topTool(h.byTool);
+    const ttPct = tt ? Math.round((tt.n / h.totalCalls) * 100) : 0;
+    const retry = h.errorRate >= 15 && h.totalCalls >= 20;
+    return `<div class="health">
+        <span class="hgauge ${cls}" title="tool-call error rate"><span class="gdot"></span>${h.errorRate}% err</span>
+        <span>${h.totalCalls} calls</span>
+        ${tt ? `<span class="toptool" title="most-used tool">${esc(tt.name)} ${ttPct}%</span>` : ''}
+        ${retry ? '<span class="retry" title="high error rate over many calls — possible stuck retry loop">⚠ retries</span>' : ''}
+    </div>`;
+}
+
 function cardHtml(s) {
     return `
     <div class="card">
@@ -739,10 +874,14 @@ function cardHtml(s) {
             <span class="badge">${statusLabel(s.status)}${s.pid ? ' · ' + s.pid : ''}</span>
             ${s.entrypoint ? `<span class="badge entry">${esc(String(s.entrypoint).replace('claude-',''))}</span>` : ''}
             ${s.isWorktree ? '<span class="badge wt">worktree</span>' : ''}
+            ${metaBadges(s)}
             ${s.hasContext ? `<span class="badge ctx" tabindex="0" role="button" onclick="openCtx('${s.sessionId}')" onkeydown="if(event.key==='Enter')openCtx('${s.sessionId}')">${icn('ic-brain',11)} context</span>` : ''}
             ${s.cost && s.cost.totalUsd > 0 ? `<span class="badge cost" title="${esc(costTitle(s.cost))}">${icn('ic-coin',11)} ${fmtCost(s.cost.totalUsd)}</span>` : ''}
+            ${s.health && s.health.compactions > 0 ? `<span class="badge compact" title="context compacted ${s.health.compactions}× — a handoff/split candidate">${icn('ic-brain',11)} ${s.health.compactions}× compact</span>` : ''}
             ${(s.prNumbers || []).map((n) => `<span class="badge pr">${icn('ic-pr',11)} PR #${esc(n)}${s.prState ? ' · ' + esc(s.prState) : ''}</span>`).join('')}
         </div>
+        ${progressBlock(s)}
+        ${healthBlock(s)}
         <div class="msgs">
             ${s.lastUser ? `<div class="u"><b>you</b>${esc(s.lastUser)}</div>` : ''}
             ${s.lastAssistant ? `<div class="a"><b>claude</b>${esc(s.lastAssistant)}</div>` : ''}
@@ -770,13 +909,22 @@ function setTotal(el, to, suffix, title) {
     requestAnimationFrame(step);
 }
 
+// Status-bucketed triage board (B-P1). Every status maps to exactly one column;
+// "Waiting on you" is first-class and leftmost. Waiting/Working are uncapped (you
+// want all of them); the long-tail Idle/Done columns cap with an honest "+N more".
+const BOARD = [
+    { key: 'waiting', label: 'Waiting on you', dot: 'waiting-on-input', match: (s) => s.status === 'waiting-on-input', cap: 0 },
+    { key: 'working', label: 'Working',        dot: 'running',          match: (s) => s.status === 'running',          cap: 0 },
+    { key: 'idle',    label: 'Idle',           dot: 'open-idle',        match: (s) => s.status === 'open-idle' || s.status === 'idle', cap: 30 },
+    { key: 'done',    label: 'Done',           dot: 'archived',         match: (s) => s.status === 'archived',         cap: 30 },
+];
+
 function render() {
     const q = document.getElementById('q').value.toLowerCase();
     const sf = document.getElementById('statusFilter').value;
     const rf = document.getElementById('repoFilter').value;
     const shown = state.sessions.filter((s) => {
         if (sf && s.status !== sf) return false;
-        if (!sf && s.status === 'archived') return false;
         if (rf && s.repo !== rf) return false;
         const hay = `${s.title} ${s.repo} ${s.gitBranch} ${s.sessionId}`.toLowerCase();
         return !q || hay.includes(q);
@@ -802,7 +950,21 @@ function render() {
     populateLaunchRepos();
 
     const grid = document.getElementById('grid');
-    grid.innerHTML = shown.length ? shown.map(cardHtml).join('') : '<div class="empty">no sessions match</div>';
+    grid.className = 'board';
+    if (!shown.length) {
+        grid.innerHTML = '<div class="empty">no sessions match</div>';
+        return;
+    }
+    grid.innerHTML = BOARD.map((b) => {
+        const all = shown.filter(b.match);
+        const cards = b.cap && all.length > b.cap ? all.slice(0, b.cap) : all;
+        const more = all.length - cards.length;
+        return `<div class="col ${b.key}">
+            <div class="colhead"><span class="dot ${b.dot}"></span><span class="lbl">${b.label}</span><span class="n">${all.length}</span></div>
+            ${cards.length ? cards.map(cardHtml).join('') : '<div class="colempty">none</div>'}
+            ${more ? `<div class="colmore">+${more} more — filter to see</div>` : ''}
+        </div>`;
+    }).join('');
 }
 
 function applySessions(data) {
@@ -1121,6 +1283,45 @@ async function openPhone() {
 }
 
 document.getElementById('phoneBtn').onclick = openPhone;
+
+/* ── cost-over-time modal (day/week/month rollup + export) ─── */
+let costWindow = 'day';
+
+function openCost() {
+    withVT(() => document.getElementById('costDialog').showModal());
+    loadRollup();
+}
+
+function setCostWindow(w) {
+    costWindow = w;
+    document.querySelectorAll('#costTabs .tab').forEach((t) => t.classList.toggle('active', t.dataset.window === w));
+    loadRollup();
+}
+
+async function loadRollup() {
+    document.getElementById('costCsv').href = `/api/cost/rollup?window=${costWindow}&format=csv`;
+    document.getElementById('costJson').href = `/api/cost/rollup?window=${costWindow}`;
+    document.getElementById('rollTable').innerHTML = '<tbody><tr><td class="meta">loading…</td></tr></tbody>';
+    try {
+        const res = await fetch(`/api/cost/rollup?window=${costWindow}`, { signal: AbortSignal.timeout(8000) });
+        const r = await res.json();
+        const buckets = (r.buckets || []).slice().reverse();   // most recent first
+        const models = [...new Set(buckets.flatMap((b) => Object.keys(b.byModel || {})))];
+        document.getElementById('costMeta').innerHTML =
+            `Total <span class="totalcost">${fmtCost(r.totalUsd)}</span> across ${r.buckets.length} ${costWindow}${r.buckets.length === 1 ? '' : 's'} (UTC)`;
+        const head = `<thead><tr><th>${costWindow}</th><th>total</th>${models.map((m) => `<th title="${esc(m)}">${esc(m.replace(/^claude-/, ''))}</th>`).join('')}</tr></thead>`;
+        const rows = buckets.map((b) => `<tr><td>${esc(b.date)}</td><td class="usd">${fmtCost(b.usd)}</td>${models.map((m) => `<td>${b.byModel && b.byModel[m] ? fmtCost(b.byModel[m]) : '·'}</td>`).join('')}</tr>`).join('');
+        document.getElementById('rollTable').innerHTML = head + `<tbody>${rows || '<tr><td class="meta">no spend recorded</td></tr>'}</tbody>`;
+    } catch (err) {
+        document.getElementById('rollTable').innerHTML = `<tbody><tr><td class="meta">could not load: ${esc(err.message)}</td></tr></tbody>`;
+    }
+}
+
+document.getElementById('costBtn').onclick = openCost;
+document.querySelectorAll('#costTabs .tab').forEach((t) => {
+    t.onclick = () => setCostWindow(t.dataset.window);
+    t.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCostWindow(t.dataset.window); } };
+});
 
 let toastSeq = 0;
 

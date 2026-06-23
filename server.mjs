@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { createServer } from 'node:http';
 import { readFile, stat, readdir } from 'node:fs/promises';
 import { watch } from 'node:fs';
@@ -8,7 +9,9 @@ import { fileURLToPath } from 'node:url';
 import { scanSessions, PROJECTS_DIR, readSlice, parseLines, textOfContent, isSyntheticUserText } from './lib/scan.mjs';
 import { liveSessions, SESSIONS_DIR } from './lib/live.mjs';
 import { desktopSessions } from './lib/desktop.mjs';
-import { sessionUsageByModel, pruneUsageCache } from './lib/cost.mjs';
+import { sessionUsageByModel, pruneUsageCache, usageByDateModel, rollupFromDaily, rollupToCsv } from './lib/cost.mjs';
+import { sessionTasks } from './lib/tasks.mjs';
+import { sessionHealth, pruneHealthCache } from './lib/health.mjs';
 import { costSummary, loadPricing } from './lib/pricing.mjs';
 import { sendPrompt, listJobs, stopJob, dismissJob, attachInTerminal, attachCommand, buildLaunchCommand, launchInTerminal } from './lib/actions.mjs';
 import { CONTEXTS_DIR, contextPathFor, isSessionUuid, listContextSessions, loadIndex, readContext } from './lib/contextStore.mjs';
@@ -18,6 +21,18 @@ import {
     COOKIE_NAME, getCookie, getToken, hostAllowed, isLocalRequest, isSecureRequest,
     rateLimitKey, recordFailure, remoteLink, setCookieHeader, tokenMatches, tooManyFailures,
 } from './lib/auth.mjs';
+
+// Live refresh relies on recursive fs.watch, which only exists on Node >= 20
+// (older Node throws ERR_FEATURE_UNAVAILABLE_ON_PLATFORM and the watch silently
+// dies). Fail loudly at startup instead of serving a dashboard that never updates.
+const NODE_MAJOR = Number.parseInt(process.versions.node, 10);
+if (Number.isFinite(NODE_MAJOR) && NODE_MAJOR < 20) {
+    console.error(
+        `cc-orchestrator requires Node >= 20 (live refresh uses recursive fs.watch). ` +
+        `You are running Node ${process.versions.node}. Upgrade Node and retry.`,
+    );
+    process.exit(1);
+}
 
 const PORT = Number(process.env.PORT || 7433);
 const LAN_MODE = process.env.CC_LAN === '1';
@@ -69,6 +84,39 @@ async function attachCost(sessions) {
     });
 }
 
+function transcriptPaths(sessions) {
+    const paths = new Map();
+    for (const s of sessions) {
+        paths.set(s, join(PROJECTS_DIR, s.projectDir, `${s.sessionId}.jsonl`));
+    }
+    return paths;
+}
+
+// TodoWrite progress per session (A1) — reads the ~/.claude/tasks mirror by id.
+async function attachTasks(sessions) {
+    await mapLimit(sessions, 8, async (s) => {
+        try {
+            s.tasks = await sessionTasks(s.sessionId);
+        } catch {
+            s.tasks = null;
+        }
+    });
+}
+
+// Tool-mix + error-rate + compaction signals per session (A2). Same (size,mtime)
+// cache discipline as attachCost; prune entries for transcripts no longer listed.
+async function attachHealth(sessions) {
+    const paths = transcriptPaths(sessions);
+    pruneHealthCache(new Set(paths.values()));
+    await mapLimit(sessions, 8, async (s) => {
+        try {
+            s.health = await sessionHealth(paths.get(s));
+        } catch {
+            s.health = null;
+        }
+    });
+}
+
 async function getSessions() {
     const [liveBySession, desktopBySession, ctxIds] = await Promise.all([
         liveSessions(),
@@ -77,7 +125,7 @@ async function getSessions() {
     ]);
     const sessions = await scanSessions({ liveBySession, desktopBySession });
     for (const s of sessions) s.hasContext = ctxIds.has(s.sessionId);
-    await attachCost(sessions);
+    await Promise.all([attachCost(sessions), attachTasks(sessions), attachHealth(sessions)]);
     return sessions;
 }
 
@@ -378,6 +426,23 @@ const handler = async (req, res) => {
         }
         if (req.method === 'GET' && url.pathname === '/api/pricing') {
             return sendJson(res, 200, loadPricing());
+        }
+        if (req.method === 'GET' && url.pathname === '/api/cost/rollup') {
+            const w = url.searchParams.get('window');
+            const window = ['day', 'week', 'month'].includes(w) ? w : 'day';
+            const sessions = await getSessionsShared();
+            const pricing = loadPricing();
+            const dailyMaps = await mapLimit(sessions, 8, (s) =>
+                usageByDateModel(join(PROJECTS_DIR, s.projectDir, `${s.sessionId}.jsonl`)).catch(() => ({})));
+            const rollup = rollupFromDaily(dailyMaps, { window, pricing });
+            if (url.searchParams.get('format') === 'csv') {
+                res.writeHead(200, {
+                    'Content-Type': 'text/csv; charset=utf-8',
+                    'Content-Disposition': `attachment; filename="cc-cost-${window}.csv"`,
+                });
+                return res.end(rollupToCsv(rollup));
+            }
+            return sendJson(res, 200, rollup);
         }
         if (req.method === 'POST' && url.pathname === '/api/reindex') {
             const entries = await reindex();

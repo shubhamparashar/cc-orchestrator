@@ -5,6 +5,10 @@
 #   ./install-launchagent.sh            # localhost only (pair with phone-link.sh for Tailscale)
 #   CC_LAN=1 ./install-launchagent.sh   # also bind LAN
 set -e
+if [ "$(uname)" != "Darwin" ]; then
+    echo "install-launchagent.sh is macOS-only (LaunchAgent). On Linux use: ./install-systemd-user.sh"
+    exit 1
+fi
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LABEL="com.cc-orchestrator"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"

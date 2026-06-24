@@ -71,8 +71,28 @@ Run `node bin/cc-doctor` first — it diagnoses most of the below and prints a f
 node server.mjs          # http://127.0.0.1:7433  (PORT=… to change)
 ```
 
-No dependencies; needs **Node ≥ 20** — live refresh uses recursive `fs.watch`, which only works
-on Node ≥ 20; on older Node the live refresh silently dies.
+No dependencies; needs **Node ≥ 20**. Live refresh uses recursive `fs.watch` on macOS (best on
+Node ≥ 20); on Linux, where recursive `fs.watch` isn't available, it falls back to a short poll.
+
+## Platforms (macOS / Linux)
+
+macOS is the primary platform; **Linux is supported** for the core dashboard. The read-only
+scanners, cost/health/history, auth, and HTTP/SSE are pure Node and run on both.
+
+- **Live refresh** — recursive `fs.watch` on macOS; a ~3 s poll on Linux (reuses the scanner's
+  `(size,mtime)` cache, so a tick is cheap). The per-file in-app transcript nudge is macOS-only;
+  the session list still refreshes on Linux.
+- **Always-on** — `./install-launchagent.sh` on macOS (LaunchAgent); **`./install-systemd-user.sh`**
+  on Linux (a `systemd --user` unit; `loginctl enable-linger $USER` to keep it up while logged out).
+- **Open in Terminal** — `osascript`/Terminal.app on macOS; `x-terminal-emulator` /
+  `gnome-terminal` / `konsole` / `xterm` on Linux (the first one found). Headless box with no
+  terminal → the action returns the command to copy instead.
+- **Claude Desktop metadata** (titles / PR state) — read from `~/Library/Application Support/Claude`
+  on macOS and `~/.config/Claude` on Linux (**unverified** — fail-open; CLI sessions work regardless).
+- **macOS-only conveniences:** the `bin/crc` and `bin/claude-shim` zsh launchers. Not needed to run
+  the dashboard; on Linux launch sessions normally and open the dashboard in your browser.
+
+CI runs the test suite + a smoke boot on both macOS and Linux (`.github/workflows/ci.yml`).
 
 ## What it shows (F1)
 

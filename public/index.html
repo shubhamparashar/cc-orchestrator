@@ -1343,11 +1343,12 @@ async function loadRollup() {
     document.getElementById('rollTable').innerHTML = '<tbody><tr><td class="meta">loading…</td></tr></tbody>';
     try {
         const res = await fetch(`/api/cost/rollup?window=${costWindow}`, { signal: AbortSignal.timeout(8000) });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
         const r = await res.json();
         const buckets = (r.buckets || []).slice().reverse();   // most recent first
         const models = [...new Set(buckets.flatMap((b) => Object.keys(b.byModel || {})))];
         document.getElementById('costMeta').innerHTML =
-            `Total <span class="totalcost">${fmtCost(r.totalUsd)}</span> across ${r.buckets.length} ${costWindow}${r.buckets.length === 1 ? '' : 's'} (UTC)`;
+            `Total <span class="totalcost">${fmtCost(r.totalUsd)}</span> across ${buckets.length} ${costWindow}${buckets.length === 1 ? '' : 's'} (UTC)`;
         const head = `<thead><tr><th>${costWindow}</th><th>total</th>${models.map((m) => `<th title="${esc(m)}">${esc(m.replace(/^claude-/, ''))}</th>`).join('')}</tr></thead>`;
         const rows = buckets.map((b) => `<tr><td>${esc(b.date)}</td><td class="usd">${fmtCost(b.usd)}</td>${models.map((m) => `<td>${b.byModel && b.byModel[m] ? fmtCost(b.byModel[m]) : '·'}</td>`).join('')}</tr>`).join('');
         document.getElementById('rollTable').innerHTML = head + `<tbody>${rows || '<tr><td class="meta">no spend recorded</td></tr>'}</tbody>`;

@@ -36,6 +36,9 @@ non-goal; this reverses that.)
 ### Fixed
 - **Hermetic `tasks` test** — reads fixtures / temp dirs instead of the live `~/.claude`, after CI
   surfaced the non-hermetic read.
+- **Cost-over-time modal** — checks `res.ok` and renders from the guarded `buckets` local, so a failed
+  rollup request now shows a clean "could not load: HTTP …" message instead of throwing
+  `Cannot read properties of undefined (reading 'length')` on any response without a `buckets` array.
 
 ### Docs
 - README **Platforms (macOS / Linux)** section and a **Demo** placeholder (GIF pending a recording).

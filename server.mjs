@@ -1,18 +1,17 @@
 #!/usr/bin/env node
 import { createServer } from 'node:http';
 import { readFile, stat, readdir } from 'node:fs/promises';
-import { watch } from 'node:fs';
-import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { scanSessions, PROJECTS_DIR, readSlice, parseLines, textOfContent, isSyntheticUserText } from './lib/scan.mjs';
 import { liveSessions, SESSIONS_DIR } from './lib/live.mjs';
-import { desktopSessions } from './lib/desktop.mjs';
+import { desktopSessions, DESKTOP_SESSIONS_DIR } from './lib/desktop.mjs';
 import { sessionUsageByModel, pruneUsageCache, usageByDateModel, rollupFromDaily, rollupToCsv } from './lib/cost.mjs';
 import { sessionTasks } from './lib/tasks.mjs';
 import { sessionHealth, pruneHealthCache } from './lib/health.mjs';
 import { recentPrompts } from './lib/history.mjs';
+import { startLiveRefresh } from './lib/watch.mjs';
 import { log } from './lib/logger.mjs';
 import { sanitizedEnv, issueUrl } from './lib/diag.mjs';
 import { costSummary, loadPricing } from './lib/pricing.mjs';
@@ -25,13 +24,13 @@ import {
     rateLimitKey, recordFailure, remoteLink, setCookieHeader, tokenMatches, tooManyFailures,
 } from './lib/auth.mjs';
 
-// Live refresh relies on recursive fs.watch, which only exists on Node >= 20
-// (older Node throws ERR_FEATURE_UNAVAILABLE_ON_PLATFORM and the watch silently
-// dies). Fail loudly at startup instead of serving a dashboard that never updates.
+// Node >= 20 baseline. On macOS/Windows live refresh uses recursive fs.watch
+// (best on >= 20); on Linux, where recursive fs.watch is unavailable, lib/watch.mjs
+// falls back to polling. Fail loudly at startup rather than degrade silently.
 const NODE_MAJOR = Number.parseInt(process.versions.node, 10);
 if (Number.isFinite(NODE_MAJOR) && NODE_MAJOR < 20) {
     console.error(
-        `cc-orchestrator requires Node >= 20 (live refresh uses recursive fs.watch). ` +
+        `cc-orchestrator requires Node >= 20. ` +
         `You are running Node ${process.versions.node}. Upgrade Node and retry.`,
     );
     process.exit(1);
@@ -168,14 +167,6 @@ function scheduleRefresh() {
             broadcast('refresh', { at: Date.now() });
         }
     }, 1000);
-}
-
-function watchSafe(path, opts, cb = scheduleRefresh) {
-    try {
-        watch(path, opts, cb);
-    } catch (err) {
-        log.warn(`watch failed for ${path}: ${err.message}`);
-    }
 }
 
 const SESSION_FILE_RE = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/;
@@ -568,11 +559,15 @@ server.listen(PORT, HOST, () => {
         const link = remoteLink(PORT);
         if (link.url) log.info(`LAN: ${link.url} (token required — open ${link.url}/login?key=… or the 📱 panel)`);
     }
-    watchSafe(PROJECTS_DIR, { recursive: true }, onProjectsChange);
-    watchSafe(SESSIONS_DIR, {});
-    watchSafe(join(homedir(), 'Library', 'Application Support', 'Claude', 'claude-code-sessions'), {
-        recursive: true,
+    const refresh = startLiveRefresh({
+        projectsDir: PROJECTS_DIR,
+        sessionsDir: SESSIONS_DIR,
+        desktopDir: DESKTOP_SESSIONS_DIR,
+        onProjectsChange,
+        scheduleRefresh,
+        onWarn: (m) => log.warn(m),
     });
+    log.info(`live refresh: ${refresh.mode}`);
     // Build the Tier-1 index over ALL sessions on first run (free), then keep it
     // fresh on an interval. Background — never blocks serving.
     reindex().then((e) => log.info(`session index: ${e.length} sessions`)).catch(() => {});

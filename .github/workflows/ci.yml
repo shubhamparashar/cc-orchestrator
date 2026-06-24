@@ -1,0 +1,42 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Syntax-check every .mjs
+        run: |
+          for f in server.mjs lib/*.mjs hooks/*.mjs jobs/*.mjs bin/cc-doctor bin/cc-install-hooks bin/cc-logs; do
+            node --check "$f"
+          done
+
+      - name: Tests
+        run: node --test
+
+      # Boots the real server with an empty ~/.claude (fresh runner) to prove it
+      # runs end-to-end on each OS — in particular that the Linux poll fallback
+      # for live refresh doesn't crash where recursive fs.watch is unavailable.
+      - name: Smoke boot
+        run: |
+          PORT=7459 node server.mjs &
+          SRV=$!
+          for i in $(seq 1 40); do curl -sf 127.0.0.1:7459/healthz >/dev/null && break; sleep 0.25; done
+          curl -sf 127.0.0.1:7459/healthz
+          curl -sf 127.0.0.1:7459/api/sessions >/dev/null
+          curl -sf 127.0.0.1:7459/api/diag >/dev/null
+          kill $SRV

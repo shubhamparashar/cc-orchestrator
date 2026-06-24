@@ -5,6 +5,14 @@ Read-only over `~/.claude` and the Claude Desktop storage — it never writes to
 
 See [REPORT.md](REPORT.md) for the build-vs-reuse audit, architecture, and phased plan.
 
+## Demo
+
+> _Demo GIF coming soon — a ~10s capture of the status board plus a cost / prompt-history modal._
+
+<!-- To add it: record a short screen capture, save it as docs/demo.gif (use a placeholder repo with
+     no real session titles/costs, since the board shows live data), and replace the line above with:
+     ![cc-orchestrator — status-bucketed board with live cost and health](docs/demo.gif) -->
+
 ## Quickstart
 
 ```sh

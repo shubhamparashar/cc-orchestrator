@@ -3,6 +3,46 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.1.0] — 2026-06-24
+
+Linux support. The Mac-only platform glue is now isolated behind a single platform gate, so the
+dashboard runs on Linux while macOS behavior is unchanged. (v1.0.0 listed Linux as an explicit
+non-goal; this reverses that.)
+
+### Added
+- **Cross-platform support (Linux)** — `lib/platform.mjs` (`isMac`/`isLinux` single source of truth)
+  gates every Mac-only path:
+  - **Live refresh** (`lib/watch.mjs`) — recursive `fs.watch` on macOS; on Linux, where it throws, a
+    ~3 s poll that reuses the scanner's `(size, mtime)` cache (a no-op when no SSE clients are
+    connected). The per-file in-app transcript nudge stays macOS-only; the session list still
+    refreshes on Linux.
+  - **Terminal attach** (`lib/actions.mjs`) — `osascript` on macOS; on Linux the first available of
+    `x-terminal-emulator` / `gnome-terminal` / `konsole` / `xterm`, passing the `shq`-escaped command
+    as a distinct argv element so the no-injection guarantee is preserved. Headless hosts get the
+    command to copy.
+  - **Always-on** — `install-systemd-user.sh` (systemd `--user` unit) for Linux;
+    `install-launchagent.sh` now refuses on non-macOS and points to it.
+  - **Desktop metadata** (`lib/desktop.mjs`) — reads `~/.config/Claude` on Linux (fail-open).
+  - **`start.sh`** — ported zsh→bash with portable listener/cwd detection (`lsof` on macOS, `ss` +
+    `/proc/<pid>/cwd` on Linux); PID-kill still fails closed (only ever kills our `server.mjs`).
+- **CI matrix** (`.github/workflows/ci.yml`) — `macos-latest` + `ubuntu-latest` running `node --check`,
+  `node --test`, and an end-to-end smoke boot (`/healthz`, `/api/sessions`, `/api/diag`). This is the
+  authoritative Linux verification, since the tool was built on macOS.
+
+### Changed
+- **Node ≥ 20 startup gate** message no longer attributes the requirement to recursive `fs.watch`
+  (the Linux path no longer relies on it).
+
+### Fixed
+- **Hermetic `tasks` test** — reads fixtures / temp dirs instead of the live `~/.claude`, after CI
+  surfaced the non-hermetic read.
+- **Cost-over-time modal** — checks `res.ok` and renders from the guarded `buckets` local, so a failed
+  rollup request now shows a clean "could not load: HTTP …" message instead of throwing
+  `Cannot read properties of undefined (reading 'length')` on any response without a `buckets` array.
+
+### Docs
+- README **Platforms (macOS / Linux)** section and a **Demo** placeholder (GIF pending a recording).
+
 ## [1.0.0] — 2026-06-23
 
 First tagged release: a zero-dependency, no-build, local-first, read-only web + phone dashboard over
@@ -41,4 +81,5 @@ all your Claude Code sessions, made installable and honest for someone other tha
 - All session data is read-only; the only write outside the tool's own config is the additive
   `settings.json` hook merge performed by `cc-install-hooks`.
 
+[1.1.0]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.1.0
 [1.0.0]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.0.0

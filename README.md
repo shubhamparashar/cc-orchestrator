@@ -16,12 +16,17 @@ See [REPORT.md](REPORT.md) for the build-vs-reuse audit, architecture, and phase
 ## Quickstart
 
 ```sh
-git clone <repo> && cd cc-orchestrator
-node server.mjs          # → http://127.0.0.1:7433
+# Quickest — run straight from the (private) repo; access is gated by GitHub permissions:
+npx github:shubhamparashar/cc-orchestrator    # → http://127.0.0.1:7433
+
+# Or from a clone (zero dependencies, no build step):
+git clone https://github.com/shubhamparashar/cc-orchestrator.git && cd cc-orchestrator
+node server.mjs                                # → http://127.0.0.1:7433
 ```
 
 Requires **Node ≥ 20** (no npm install — zero dependencies). Open the URL in your browser.
-Optional: `npm i -g .` to get the `cc-orchestrator` / `cc-doctor` / `cc-install-hooks` commands;
+Optional: `npm i -g github:shubhamparashar/cc-orchestrator` (or `npm i -g .` from a clone) to get the
+`cc-orchestrator` / `cc-doctor` / `cc-install-hooks` / `cc-logs` commands;
 `./install-launchagent.sh` to run it always-on; `./phone-link.sh` for private phone access over
 Tailscale. See [SECURITY.md](SECURITY.md) for the trust model (loopback is unauthenticated; LAN is
 plaintext — prefer Tailscale).

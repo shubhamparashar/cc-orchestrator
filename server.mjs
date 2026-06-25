@@ -11,6 +11,8 @@ import { sessionUsageByModel, pruneUsageCache, usageByDateModel, rollupFromDaily
 import { sessionTasks } from './lib/tasks.mjs';
 import { sessionHealth, pruneHealthCache } from './lib/health.mjs';
 import { recentPrompts } from './lib/history.mjs';
+import { loadConfig, ALERT_DEFAULTS } from './lib/config.mjs';
+import { checkAlerts } from './lib/alerts.mjs';
 import { startLiveRefresh } from './lib/watch.mjs';
 import { log } from './lib/logger.mjs';
 import { sanitizedEnv, issueUrl } from './lib/diag.mjs';
@@ -40,6 +42,10 @@ const PORT = Number(process.env.PORT || 7433);
 const LAN_MODE = process.env.CC_LAN === '1';
 const HOST = LAN_MODE ? '0.0.0.0' : '127.0.0.1';
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), 'public');
+
+// AFK alerts config. The subsystem defaults to disabled, so this is a no-op for
+// users who haven't opted in via <config-dir>/config.json.
+const cfg = loadConfig({ alerts: ALERT_DEFAULTS });
 
 const STATIC_FILES = {
     '/manifest.json': { file: 'manifest.json', type: 'application/manifest+json' },
@@ -141,6 +147,24 @@ function getSessionsShared() {
         });
     }
     return inFlightScan;
+}
+
+// Per-day × per-model token rollup, priced, across the given sessions. Shared by
+// the /api/cost/rollup handler and the budget alert so both compute spend the same way.
+async function costRollup(sessions, window) {
+    const pricing = loadPricing();
+    const dailyMaps = await mapLimit(sessions, 8, (s) =>
+        usageByDateModel(join(PROJECTS_DIR, s.projectDir, `${s.sessionId}.jsonl`)).catch(() => ({})));
+    return rollupFromDaily(dailyMaps, { window, pricing });
+}
+
+// Today's (UTC) total spend in USD across all scanned sessions, for the budget alert.
+async function getTodayUsd() {
+    const sessions = await getSessionsShared();
+    const rollup = await costRollup(sessions, 'day');
+    const today = new Date().toISOString().slice(0, 10);
+    const bucket = rollup.buckets.find((b) => b.date === today);
+    return bucket?.usd ?? 0;
 }
 
 // Tier-1 index build over ALL sessions (free, transcript-derived). Single-flight
@@ -436,10 +460,7 @@ const handler = async (req, res) => {
             const w = url.searchParams.get('window');
             const window = ['day', 'week', 'month'].includes(w) ? w : 'day';
             const sessions = await getSessionsShared();
-            const pricing = loadPricing();
-            const dailyMaps = await mapLimit(sessions, 8, (s) =>
-                usageByDateModel(join(PROJECTS_DIR, s.projectDir, `${s.sessionId}.jsonl`)).catch(() => ({})));
-            const rollup = rollupFromDaily(dailyMaps, { window, pricing });
+            const rollup = await costRollup(sessions, window);
             if (url.searchParams.get('format') === 'csv') {
                 res.writeHead(200, {
                     'Content-Type': 'text/csv; charset=utf-8',
@@ -572,6 +593,15 @@ server.listen(PORT, HOST, () => {
     // fresh on an interval. Background — never blocks serving.
     reindex().then((e) => log.info(`session index: ${e.length} sessions`)).catch(() => {});
     setInterval(() => { reindex().catch(() => {}); }, 5 * 60 * 1000);
+    // AFK alerts: fire OS notifications for waiting-session digests / budget
+    // crossings. Opt-in — only scheduled when the config enables it.
+    if (cfg.alerts.enabled) {
+        log.info(`AFK alerts enabled (every ${cfg.alerts.checkIntervalMs}ms)`);
+        setInterval(
+            () => checkAlerts({ getSessions: getSessionsShared, getTodayUsd, config: cfg, now: Date.now() }).catch(() => {}),
+            cfg.alerts.checkIntervalMs,
+        );
+    }
 });
 
 // Browsers may resolve "localhost" to ::1 first; listen there too so those

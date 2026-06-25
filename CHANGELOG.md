@@ -3,6 +3,28 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.2.0] — 2026-06-25
+
+AFK alerts — opt-in OS notifications for sessions waiting on you and for daily spend crossing a
+budget, so an unattended fleet can reach you without watching the dashboard. Off by default.
+
+### Added
+- **AFK alert subsystem** (`lib/alerts.mjs`, `lib/notify.mjs`, `lib/config.mjs`, `lib/presence.mjs`),
+  config-driven via `<config-dir>/config.json`, **disabled unless `alerts.enabled` is set**:
+  - **Waiting-on-you digest** — notifies when the count of `waiting-on-input` sessions changes
+    (deduped so an unchanged count never re-fires); suppressed while you're present at the machine.
+  - **Budget-exceeded alert** — fires at most once per UTC day, the first time the day's spend
+    reaches `alerts.budget.thresholdUsd` (not presence-suppressed — spend matters even at the keyboard).
+  - **Presence-aware suppression** — best-effort via `CLAUDE_CLIENT_PRESENCE_FILE` mtime.
+  - **OS notifications** — injection-safe `osascript` (macOS) / `notify-send` (Linux); headless is a
+    no-op; `CC_ALERT_DRYRUN=1` logs instead of firing. Alert state persists to the config dir
+    (`CC_CONFIG_DIR` override), never to the read-only `~/.claude`.
+
+### Changed
+- Package renamed to the scoped **`@shubhamparashar/cc-orchestrator`** for npm distribution (the
+  unscoped name was already taken); added `publishConfig.access: "public"`.
+- `/api/cost/rollup` and the budget alert now share one `costRollup()` helper in `server.mjs`.
+
 ## [1.1.0] — 2026-06-24
 
 Linux support. The Mac-only platform glue is now isolated behind a single platform gate, so the
@@ -81,5 +103,6 @@ all your Claude Code sessions, made installable and honest for someone other tha
 - All session data is read-only; the only write outside the tool's own config is the additive
   `settings.json` hook merge performed by `cc-install-hooks`.
 
+[1.2.0]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.2.0
 [1.1.0]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.1.0
 [1.0.0]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.0.0

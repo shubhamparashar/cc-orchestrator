@@ -1,6 +1,6 @@
 {
-  "name": "cc-orchestrator",
-  "version": "1.1.0",
+  "name": "@shubhamparashar/cc-orchestrator",
+  "version": "1.2.0",
   "description": "Local-first, read-only web+phone dashboard over all your Claude Code sessions — status board, lifetime cost, history search, health signals.",
   "type": "module",
   "bin": {
@@ -15,6 +15,7 @@
     "test": "node --test"
   },
   "engines": { "node": ">=20" },
+  "publishConfig": { "access": "public" },
   "dependencies": {},
   "license": "MIT",
   "author": "Shubham Parashar <shubham.p@joinfleek.com>",

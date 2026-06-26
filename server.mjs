@@ -7,7 +7,10 @@ import { fileURLToPath } from 'node:url';
 import { scanSessions, PROJECTS_DIR, readSlice, parseLines, textOfContent, isSyntheticUserText } from './lib/scan.mjs';
 import { liveSessions, SESSIONS_DIR } from './lib/live.mjs';
 import { desktopSessions, DESKTOP_SESSIONS_DIR } from './lib/desktop.mjs';
-import { sessionUsageByModel, pruneUsageCache, usageByDateModel, rollupFromDaily, rollupToCsv } from './lib/cost.mjs';
+import { sessionUsageByModel, pruneUsageCache, usageByDateModel, rollupFromDaily, rollupToCsv, mergeUsageByModel } from './lib/cost.mjs';
+import {
+    subagentUsageByModel, subagentDateModel, subagentFilesFor, pruneSubagentCaches,
+} from './lib/subagents.mjs';
 import { sessionTasks } from './lib/tasks.mjs';
 import { sessionHealth, pruneHealthCache } from './lib/health.mjs';
 import { recentPrompts } from './lib/history.mjs';
@@ -80,16 +83,33 @@ async function attachCost(sessions) {
         livePaths.add(join(PROJECTS_DIR, s.projectDir, `${s.sessionId}.jsonl`));
     }
     pruneUsageCache(livePaths);
+    // Sub-agent (Explore/Task/workflow) spend lives in nested transcripts the
+    // parent's own usage map omits; the parent only carries a model-less Agent
+    // rollup on user lines, which the cost accumulator (assistant-only) never
+    // counts — so merging the sub-agent map in is purely additive, no double-count.
+    const liveSubPaths = new Set();
     await mapLimit(sessions, 8, async (s) => {
         try {
-            const byModel = await sessionUsageByModel(
+            const own = await sessionUsageByModel(
                 join(PROJECTS_DIR, s.projectDir, `${s.sessionId}.jsonl`),
             );
+            const sub = await subagentUsageByModel(PROJECTS_DIR, s.projectDir, s.sessionId);
+            // Merge into a fresh map so neither the cost cache (own) nor the
+            // subagent cache (sub) is mutated in place by the token accumulation.
+            const byModel = mergeUsageByModel(mergeUsageByModel({}, own), sub);
+            const subFiles = await subagentFilesFor(PROJECTS_DIR, s.projectDir, s.sessionId);
+            for (const { jsonlPath } of subFiles) liveSubPaths.add(jsonlPath);
+            s.subagents = subFiles.length;
+            const subSummary = costSummary(sub, pricing);
+            s.subagentCost = subSummary.totalUsd;
             s.cost = costSummary(byModel, pricing);
         } catch {
             s.cost = null;
+            s.subagents = 0;
+            s.subagentCost = 0;
         }
     });
+    pruneSubagentCaches(liveSubPaths);
 }
 
 function transcriptPaths(sessions) {
@@ -153,8 +173,15 @@ function getSessionsShared() {
 // the /api/cost/rollup handler and the budget alert so both compute spend the same way.
 async function costRollup(sessions, window) {
     const pricing = loadPricing();
-    const dailyMaps = await mapLimit(sessions, 8, (s) =>
-        usageByDateModel(join(PROJECTS_DIR, s.projectDir, `${s.sessionId}.jsonl`)).catch(() => ({})));
+    // Two day×model maps per session — its own transcript plus its sub-agents —
+    // both fed to the rollup so the cost-over-time view and the budget alert
+    // include sub-agent spend (additive, same no-double-count guarantee as attachCost).
+    const perSession = await mapLimit(sessions, 8, async (s) => {
+        const own = await usageByDateModel(join(PROJECTS_DIR, s.projectDir, `${s.sessionId}.jsonl`)).catch(() => ({}));
+        const sub = await subagentDateModel(PROJECTS_DIR, s.projectDir, s.sessionId).catch(() => ({}));
+        return [own, sub];
+    });
+    const dailyMaps = perSession.flat();
     return rollupFromDaily(dailyMaps, { window, pricing });
 }
 
@@ -225,6 +252,32 @@ async function relatedSessions({ q, repo, forSession }) {
     const docs = [];
     const seen = new Set();
     for (const e of index) {
+        // A sub-agent entry shares its parent's sessionId; skip it on the parent's
+        // own "related" tab (a session isn't related to its own sub-agents), but
+        // give it a unique doc id and carry its sub-agent identity through so a hit
+        // renders distinctly and still navigates to the parent session.
+        if (e.kind === 'subagent') {
+            if (e.parentSessionId === forSession) continue;
+            const parentLive = byId.get(e.parentSessionId);
+            if (parentLive?.isArchived) continue;
+            docs.push({
+                id: `sub:${e.agentId}`,
+                kind: 'subagent',
+                parentSessionId: e.parentSessionId,
+                agentType: e.agentType || 'subagent',
+                description: e.description || e.title || '',
+                title: e.title || null,
+                tags: e.tags || [],
+                goal: null,
+                repo: e.repo || parentLive?.repo || null,
+                body: e.body || '',
+                updatedMs: Math.max(e.updated || 0, parentLive?.lastActivityAt || 0),
+                contextPath: null,
+                cwd: parentLive?.cwd || null,
+                _live: parentLive || null,
+            });
+            continue;
+        }
         if (e.sessionId === forSession) continue;
         const live = byId.get(e.sessionId);
         if (live?.isArchived) continue;
@@ -254,25 +307,44 @@ async function relatedSessions({ q, repo, forSession }) {
     let query = q;
     let repoBoost = repo;
     if (forSession && isSessionUuid(forSession)) {
-        const self = index.find((e) => e.sessionId === forSession);
+        const self = index.find((e) => !e.kind && e.sessionId === forSession);
         const ownLive = byId.get(forSession);
         query = [self?.title, self?.goal, (self?.tags || []).join(' '), self?.body, ownLive?.title]
             .filter(Boolean).join(' ').slice(0, 1500);
         repoBoost = repoBoost || self?.repo || ownLive?.repo || null;
     }
-    const ranked = rankDocs(query, docs, { repo: repoBoost, limit: 8 });
-    return ranked.map(({ doc, score }) => ({
-        sessionId: doc.id,
-        title: doc.title,
-        repo: doc.repo,
-        goal: doc.goal,
-        contextPath: doc.contextPath,
-        cwd: doc._live?.cwd || doc.cwd,
-        status: doc._live?.status || 'idle',
-        contextPct: doc._live?.contextPct ?? null,
-        updated: doc.updatedMs,
-        score: Math.round(score * 10) / 10,
-    }));
+    // Rank a wider slate, then collapse: keep at most one hit per (kind, parent
+    // session) so a session whose many sub-agents all match the query doesn't crowd
+    // the list with near-duplicate "↳" rows, and a session already surfaced on its
+    // own merits isn't shadowed by one of its sub-agents. Highest score wins per key.
+    const ranked = rankDocs(query, docs, { repo: repoBoost, limit: 24 });
+    const out = [];
+    const taken = new Set();
+    for (const { doc, score } of ranked) {
+        const isSub = doc.kind === 'subagent';
+        const sessionId = isSub ? doc.parentSessionId : doc.id;
+        const key = `${isSub ? 'sub' : 'session'}:${sessionId}`;
+        if (taken.has(key)) continue;
+        taken.add(key);
+        const live = byId.get(sessionId) || doc._live;
+        out.push({
+            sessionId,
+            kind: isSub ? 'subagent' : 'session',
+            agentType: isSub ? doc.agentType : null,
+            description: isSub ? doc.description : null,
+            title: doc.title,
+            repo: doc.repo,
+            goal: doc.goal,
+            contextPath: doc.contextPath,
+            cwd: live?.cwd || doc.cwd,
+            status: live?.status || 'idle',
+            contextPct: live?.contextPct ?? null,
+            updated: doc.updatedMs,
+            score: Math.round(score * 10) / 10,
+        });
+        if (out.length >= 8) break;
+    }
+    return out;
 }
 
 const TRANSCRIPT_TAIL_BYTES = 512 * 1024;

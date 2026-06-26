@@ -1,0 +1,2 @@
+{"type":"user","isMeta":false,"timestamp":"2026-06-22T09:00:00.000Z","message":{"role":"user","content":"Sibling session subagent that must not leak into the prefix session"}}
+{"type":"assistant","timestamp":"2026-06-22T09:00:03.000Z","message":{"role":"assistant","model":"claude-opus-4-8","content":[{"type":"text","text":"Working in the sibling session."}],"usage":{"input_tokens":1,"output_tokens":1}}}

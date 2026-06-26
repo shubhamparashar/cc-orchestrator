@@ -478,10 +478,15 @@ const handler = async (req, res) => {
             if (wantsHtml(req, url)) return sendLoginPage(res, 401, '');
             return sendJson(res, 401, { error: 'auth required' });
         }
-        // Authenticated remote POSTs need the frontend CSRF header (cookie auth belt).
-        if (req.method === 'POST' && req.headers['x-cc'] !== '1') {
-            return sendJson(res, 403, { error: 'missing X-CC header' });
-        }
+    }
+
+    // CSRF: every state-changing request must carry the first-party X-CC header.
+    // A cross-origin <form> or "simple" fetch cannot set a custom header without a
+    // CORS preflight, which this server never answers — so this blocks drive-by
+    // POSTs from a malicious page. Enforced on loopback too, where requests are
+    // otherwise tokenless; the dashboard sends X-CC:1 on every mutating fetch.
+    if (req.method !== 'GET' && req.method !== 'HEAD' && req.headers['x-cc'] !== '1') {
+        return sendJson(res, 403, { error: 'missing X-CC header' });
     }
 
     try {

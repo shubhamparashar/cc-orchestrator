@@ -600,6 +600,7 @@ const handler = async (req, res) => {
         if (req.method === 'POST' && url.pathname === '/api/send') {
             const { sessionId, cwd, text, fork } = await readBody(req);
             if (!sessionId || !text) return sendJson(res, 400, { error: 'sessionId and text required' });
+            if (!isSessionUuid(sessionId)) return sendJson(res, 400, { error: 'invalid session id' });
             const onUpdate = (job) => {
                 const { child, ...safe } = job;
                 broadcast('job', safe);
@@ -618,6 +619,7 @@ const handler = async (req, res) => {
         if (req.method === 'POST' && url.pathname === '/api/attach') {
             const { sessionId, cwd } = await readBody(req);
             if (!sessionId) return sendJson(res, 400, { error: 'sessionId required' });
+            if (!isSessionUuid(sessionId)) return sendJson(res, 400, { error: 'invalid session id' });
             const result = await attachInTerminal({ sessionId, cwd });
             result.command = attachCommand({ sessionId, cwd });
             return sendJson(res, 200, result);

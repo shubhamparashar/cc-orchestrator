@@ -92,3 +92,23 @@ test('state-changing POST to /api/send without X-CC never reaches the spawn path
     assert.strictEqual(r.status, 403);
     assert.match(r.body, /X-CC/);
 });
+
+test('/api/send rejects a non-UUID sessionId before spawning claude', async () => {
+    const r = await http(
+        'POST', '/api/send',
+        { 'Content-Type': 'application/json', 'X-CC': '1' },
+        '{"sessionId":"--dangerously-skip-permissions","text":"hi"}',
+    );
+    assert.strictEqual(r.status, 400);
+    assert.match(r.body, /invalid session id/);
+});
+
+test('/api/attach rejects a non-UUID sessionId', async () => {
+    const r = await http(
+        'POST', '/api/attach',
+        { 'Content-Type': 'application/json', 'X-CC': '1' },
+        '{"sessionId":"../../etc/passwd"}',
+    );
+    assert.strictEqual(r.status, 400);
+    assert.match(r.body, /invalid session id/);
+});

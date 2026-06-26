@@ -101,7 +101,7 @@ orchestrator's own `~/.claude/contexts/` and the additively-merged hooks block i
 | `hooks/session-start.mjs` | Injects `session-id` + context path. |
 | `hooks/ctx-update.mjs` | Stop + PreCompact → spawn generator **detached**, exit 0. Recursion guard + debounce + size gate. |
 | `hooks/ctx-prompt.mjs` | UserPromptSubmit → relevant-prior-sessions block + once-per-session 70% warning. Lexical only, fail-open. |
-| `jobs/ctx-generate.mjs` | Dialogue-only tail (≤30 KB) → `claude -p` (fable, effort low, no persistence) → context.md → index rebuild. |
+| `jobs/ctx-generate.mjs` | Dialogue-only tail (≤30 KB) → `claude -p` (haiku-4-5, no persistence; default-model fallback) → context.md → index rebuild. |
 | `jobs/backfill-contexts.mjs` | Opt-in backfill (quota cost; never auto-runs). |
 | `jobs/rebuild-index.mjs` | Rebuild index after a manual `/context` write. |
 | `lib/actions.mjs` (+) | `shq()` shell-quoting, `runInTerminal`, `buildLaunchCommand`, `launchInTerminal`. |

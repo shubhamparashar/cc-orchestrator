@@ -158,7 +158,7 @@ All hooks are **fail-open** (any error exits 0 silently) and never call a model 
 the model work happens only in the detached job. The recursion guard (`CC_CTX_JOB=1` on the
 spawned process) stops the generator's own `claude` call from re-triggering the hooks.
 
-- `jobs/ctx-generate.mjs` — dialogue-only tail (≤30 KB, never raw transcript) → `claude -p --model claude-fable-5 --effort low --no-session-persistence` → write context.md → rebuild `index.json`.
+- `jobs/ctx-generate.mjs` — dialogue-only tail (≤30 KB, never raw transcript) → `claude -p --model claude-haiku-4-5 --no-session-persistence` → write context.md → rebuild `index.json`.
 - `jobs/backfill-contexts.mjs --limit N` — **opt-in** backfill (costs quota; never auto-runs).
 - `jobs/rebuild-index.mjs` — rebuild the index from context files on disk.
 - `/context` skill (`~/.claude/skills/context/SKILL.md`) — manual high-fidelity variant: the agent writes its own context.md from live conversation knowledge.
@@ -267,7 +267,7 @@ add it to `pricing.json`.
 
 ### Token frugality (design requirement)
 
-All orchestrator-internal model jobs use `claude-fable-5 --effort low --no-session-persistence` —
-never Opus. Models never see raw transcripts (dialogue text only, ≤30 KB tail). Ranking and search
+All orchestrator-internal model jobs use `claude-haiku-4-5 --no-session-persistence` (overridable via
+`CC_CTX_MODEL`; falls back to the CLI's default model if that one is gated/unavailable) — never Opus. Models never see raw transcripts (dialogue text only, ≤30 KB tail). Ranking and search
 are purely lexical so they're free and fast enough to run inside hooks and on every keystroke.
 Context is shared by injecting the ≤50-line context.md (or just its path) — never transcript chunks.

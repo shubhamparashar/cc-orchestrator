@@ -3,6 +3,19 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.2.1] — 2026-06-26
+
+### Fixed
+- **Context-window % was ~5× too high for 1M-native models.** The per-session
+  context-used percentage divided by a hardcoded 200k window unless the model id
+  carried a `[1m]` marker. Current models (Opus 4.6/4.7/4.8, Sonnet 4.6, Fable 5)
+  ship a 1M window as standard and carry no marker, so e.g. an Opus 4.8 session at
+  130k tokens showed 65% instead of the correct 13% (Claude Desktop's figure).
+  `contextWindowFor` now resolves the window from a per-model table (longest-prefix
+  match on the Desktop id, then the transcript id), still honors the `[1m]` beta
+  marker for 1M-beta sessions on otherwise-200k models, and keeps a usage-based
+  safety net for unrecognized models.
+
 ## [1.2.0] — 2026-06-25
 
 AFK alerts — opt-in OS notifications for sessions waiting on you and for daily spend crossing a
@@ -103,6 +116,7 @@ all your Claude Code sessions, made installable and honest for someone other tha
 - All session data is read-only; the only write outside the tool's own config is the additive
   `settings.json` hook merge performed by `cc-install-hooks`.
 
+[1.2.1]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.2.1
 [1.2.0]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.2.0
 [1.1.0]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.1.0
 [1.0.0]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.0.0

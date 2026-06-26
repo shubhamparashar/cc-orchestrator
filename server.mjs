@@ -288,6 +288,7 @@ async function relatedSessions({ q, repo, forSession }) {
             tags: e.tags || [],
             goal: e.goal,
             repo: e.repo || live?.repo || null,
+            work: e.work || '',
             body: e.body || '',
             updatedMs: Math.max(e.updated || 0, live?.lastActivityAt || 0),
             contextPath: e.contextPath || null,

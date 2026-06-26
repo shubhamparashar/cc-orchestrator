@@ -93,6 +93,16 @@ test('harvestWorkTokens dedupes a file touched many times / many ways', () => {
     assert.ok(w.has('edit') && w.has('read'));
 });
 
+test('captures the verb of each chained sub-command, skipping junk', () => {
+    const t = assistantTools([
+        { name: 'Bash', input: { command: 'cd ~/repo && git status && node --test' } },
+        { name: 'Bash', input: { command: 'd=$(mktemp); launchctl kickstart -k foo' } },
+    ]);
+    const w = harvestWorkTokens(t);
+    for (const tok of ['cd', 'git', 'node', 'launchctl']) assert.ok(w.has(tok), `command "${tok}"`);
+    assert.ok(![...w].some((x) => x.includes('=') || x.includes('$')), 'no assignment/quoted junk');
+});
+
 test('only tool_use blocks count as work — a text mention does not', () => {
     const t = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'editing cost.mjs now' }] } }) + '\n';
     assert.equal(harvestWorkTokens(t).size, 0);

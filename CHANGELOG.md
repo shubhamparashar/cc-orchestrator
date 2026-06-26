@@ -3,6 +3,19 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.3.3] — 2026-06-26
+
+### Fixed
+- **The `work` field (v1.3.2) wasn't actually searched.** The related/search
+  endpoint built its ranking docs without `work`, so a query for a file or command
+  scored against an empty field — the work was indexed but unsearchable. Pass
+  `work` through to the ranker.
+- **Chained shell commands only captured their first verb.** `cd … && git … &&
+  node …` recorded only `cd`. Each sub-command's verb is now captured (split on
+  `&&` / `||` / `|` / `;` / newline) and junk tokens (variable assignments, quoted
+  args) are skipped — so `git` / `launchctl` / `node` become findable and the field
+  is cleaner.
+
 ## [1.3.2] — 2026-06-26
 
 ### Added
@@ -166,6 +179,7 @@ all your Claude Code sessions, made installable and honest for someone other tha
 - All session data is read-only; the only write outside the tool's own config is the additive
   `settings.json` hook merge performed by `cc-install-hooks`.
 
+[1.3.3]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.3.3
 [1.3.2]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.3.2
 [1.3.1]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.3.1
 [1.3.0]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.3.0

@@ -3,6 +3,27 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.3.0] — 2026-06-26
+
+### Added
+- **Sub-agent transcript indexing (A9).** The nested sub-agent transcripts
+  (`<session>/subagents/**/agent-*.jsonl` — Explore / Task / workflow runs, ~565 on
+  this machine) are folded into both cost and search from one `(size, mtime)`-cached
+  walk (`lib/subagents.mjs`):
+  - **Cost recovery** — sub-agent spend (e.g. Explore → Haiku) was previously
+    unattributed; it now merges into each session's cost, the header total, the
+    cost-over-time rollup, and the budget alert. Purely additive and double-count-free
+    (the parent transcript carries only a model-less `Agent` rollup that the
+    assistant-only accumulator never counts). `/api/sessions` gains `subagents`
+    (count) and `subagentCost`; ~$1,080 of fleet spend recovered in testing.
+  - **Search corpus (~5.5×)** — each sub-agent becomes a searchable Tier-1 index
+    entry (task description + agent type + dialogue tail); a hit navigates to its
+    parent session. Index grew 100 → ~654 entries here.
+  - **UI** — a per-session "⛬ N subagents" chip and distinct "↳ type: description"
+    search hits.
+  - `lib/cost.mjs` now exports its line-accumulation helpers so the sub-agent walk
+    reuses them rather than duplicating the cost logic.
+
 ## [1.2.1] — 2026-06-26
 
 ### Fixed
@@ -116,6 +137,7 @@ all your Claude Code sessions, made installable and honest for someone other tha
 - All session data is read-only; the only write outside the tool's own config is the additive
   `settings.json` hook merge performed by `cc-install-hooks`.
 
+[1.3.0]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.3.0
 [1.2.1]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.2.1
 [1.2.0]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.2.0
 [1.1.0]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.1.0

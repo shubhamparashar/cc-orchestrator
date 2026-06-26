@@ -3,6 +3,22 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.3.2] — 2026-06-26
+
+### Added
+- **Search by the work you did, not just what you typed.** The index now harvests
+  each session's "work" from its assistant `tool_use` blocks — the **files
+  edited/read** (basenames like `cost.mjs`), **tools used**, **leading bash
+  commands** (`git`, `yarn`, …), and **sub-agent types** spawned — into a dedicated
+  repo-weighted `work` field. So "find the session where I touched `cost.mjs`" or
+  "…where I ran the migration" now resolves, which prompt text alone couldn't.
+  Deduped; harvested in the same incremental transcript pass (no extra read, no
+  model); IDF keeps ubiquitous files (`package.json`) from dominating.
+
+### Changed
+- Raised the per-session distinct-term cap (800 → 1500) so even very large
+  multi-task sessions never drop a term (well within the index's size budget).
+
 ## [1.3.1] — 2026-06-26
 
 ### Changed
@@ -150,6 +166,7 @@ all your Claude Code sessions, made installable and honest for someone other tha
 - All session data is read-only; the only write outside the tool's own config is the additive
   `settings.json` hook merge performed by `cc-install-hooks`.
 
+[1.3.2]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.3.2
 [1.3.1]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.3.1
 [1.3.0]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.3.0
 [1.2.1]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.2.1

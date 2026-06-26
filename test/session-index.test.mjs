@@ -1,11 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { harvestPromptTerms, bodyFromCounts } from '../lib/sessionIndex.mjs';
+import { harvestPromptTerms, bodyFromCounts, harvestWorkTokens, workString } from '../lib/sessionIndex.mjs';
+import { rankDocs } from '../lib/rank.mjs';
 
 // JSONL transcript of user prompts (the shape Claude Code writes for typed prompts).
 function transcript(prompts) {
     return prompts.map((p) => JSON.stringify({ type: 'user', message: { role: 'user', content: p } })).join('\n') + '\n';
+}
+
+// JSONL assistant record carrying tool_use blocks.
+function assistantTools(blocks) {
+    const content = blocks.map((b) => ({ type: 'tool_use', ...b }));
+    return JSON.stringify({ type: 'assistant', message: { role: 'assistant', content } }) + '\n';
 }
 
 test('indexes terms from the WHOLE session — early task survives, not just the tail', () => {
@@ -59,6 +66,48 @@ test('frequency-orders and caps the distinct-term set', () => {
     for (let i = 0; i < 2000; i++) counts.set(`term${i}`, 1);
     counts.set('dominant', 99);
     const terms = bodyFromCounts(counts).split(' ');
-    assert.ok(terms.length <= 800 * 3, 'bag respects the distinct-term cap');
+    assert.ok(terms.length <= 1500 * 3, 'bag respects the distinct-term cap');
     assert.ok(terms.includes('dominant'), 'highest-frequency term kept');
+});
+
+test('harvestWorkTokens extracts files, tools, commands, and sub-agent types', () => {
+    const t = assistantTools([
+        { name: 'Edit', input: { file_path: '/Users/x/repo/lib/cost.mjs' } },
+        { name: 'Bash', input: { command: 'git commit -m wip' } },
+        { name: 'Agent', input: { subagent_type: 'Explore' } },
+    ]);
+    const w = harvestWorkTokens(t);
+    for (const tok of ['edit', 'cost.mjs', 'bash', 'git', 'agent', 'explore']) {
+        assert.ok(w.has(tok), `work has "${tok}"`);
+    }
+});
+
+test('harvestWorkTokens dedupes a file touched many times / many ways', () => {
+    const t = assistantTools([
+        { name: 'Edit', input: { file_path: '/a/cost.mjs' } },
+        { name: 'Edit', input: { file_path: '/b/cost.mjs' } },
+        { name: 'Read', input: { file_path: '/a/cost.mjs' } },
+    ]);
+    const w = harvestWorkTokens(t);
+    assert.equal([...w].filter((x) => x === 'cost.mjs').length, 1, 'basename deduped');
+    assert.ok(w.has('edit') && w.has('read'));
+});
+
+test('only tool_use blocks count as work — a text mention does not', () => {
+    const t = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'editing cost.mjs now' }] } }) + '\n';
+    assert.equal(harvestWorkTokens(t).size, 0);
+});
+
+test('workString caps the distinct work set', () => {
+    const big = new Set(Array.from({ length: 1000 }, (_, i) => `f${i}.ts`));
+    assert.ok(workString(big).split(' ').length <= 500);
+});
+
+test('a file in the work field makes a session findable by filename', () => {
+    const docs = [
+        { id: 's1', title: 'first', work: 'cost.mjs server.mjs git', body: '' },
+        { id: 's2', title: 'second', work: 'index.html npm', body: '' },
+    ];
+    const r = rankDocs('cost.mjs', docs);
+    assert.equal(r[0].doc.id, 's1', 'session that touched cost.mjs ranks first');
 });

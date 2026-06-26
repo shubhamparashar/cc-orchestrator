@@ -121,3 +121,23 @@ test('a file in the work field makes a session findable by filename', () => {
     const r = rankDocs('cost.mjs', docs);
     assert.equal(r[0].doc.id, 's1', 'session that touched cost.mjs ranks first');
 });
+
+test('an exact filename beats generic-prefix noise (forward-only prefix)', () => {
+    // Many sessions merely mention the generic word "session"; only one owns the
+    // specific file. The owner must rank first — the generic prefix must not dilute.
+    const docs = [
+        { id: 'owner', title: 'x', work: 'session-index.test.mjs', body: '' },
+        ...Array.from({ length: 10 }, (_, i) => ({ id: `noise${i}`, title: 'y', work: '', body: 'session session session' })),
+    ];
+    const r = rankDocs('session-index.test.mjs', docs);
+    assert.equal(r[0].doc.id, 'owner', 'the session owning the exact file ranks first');
+});
+
+test('forward prefix still works (query is a prefix of a longer indexed token)', () => {
+    const docs = [
+        { id: 'a', title: 'signoz-dashboard work', body: '' },
+        { id: 'b', title: 'unrelated', body: '' },
+    ];
+    const r = rankDocs('signoz', docs);
+    assert.equal(r[0]?.doc.id, 'a', 'short query still matches a longer token');
+});

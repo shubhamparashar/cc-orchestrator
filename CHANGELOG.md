@@ -3,6 +3,19 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.3.4] — 2026-06-26
+
+### Fixed
+- **Exact filename/command search was diluted by generic-prefix matches.** The
+  ranker credited partial matches in *both* prefix directions, so a short common
+  token (e.g. `session`) credited a long specific query (`session-index.test.mjs`)
+  — letting sessions that merely mention the generic word outrank the one that
+  actually owns the exact file (a one-of-a-kind file ranked 8th instead of 1st).
+  Prefix credit is now **forward-only**: a query still matches a longer token it
+  prefixes (`scan` → `scan.mjs`, `signoz` → `signoz-dashboard`), but the reverse is
+  dropped. A distinctive file/command now ranks its owning session first; common
+  files correctly return all editing sessions, recency-ordered.
+
 ## [1.3.3] — 2026-06-26
 
 ### Fixed
@@ -179,6 +192,7 @@ all your Claude Code sessions, made installable and honest for someone other tha
 - All session data is read-only; the only write outside the tool's own config is the additive
   `settings.json` hook merge performed by `cc-install-hooks`.
 
+[1.3.4]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.3.4
 [1.3.3]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.3.3
 [1.3.2]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.3.2
 [1.3.1]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.3.1

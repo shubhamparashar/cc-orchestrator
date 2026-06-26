@@ -3,6 +3,19 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.3.1] — 2026-06-26
+
+### Changed
+- **Search now covers the whole session, not just the recent tail.** The Tier-1
+  index body had been the most-recent ~4000 chars of prompts from only the last
+  512 KB of a transcript, so earlier tasks in a long, multi-task session weren't
+  findable by their content. It now harvests the significant terms from *every*
+  user prompt across the full transcript, deduped with a small per-term frequency
+  cap (a word used 50× collapses to 3) so a sprawling session indexes completely
+  while staying small. Lexical only — no model call; the harvest is incremental
+  (byte-offset resume, like the cost reader) so the growing live session stays
+  cheap, and BM25F's IDF still weights the rare, high-signal terms at query time.
+
 ## [1.3.0] — 2026-06-26
 
 ### Added
@@ -137,6 +150,7 @@ all your Claude Code sessions, made installable and honest for someone other tha
 - All session data is read-only; the only write outside the tool's own config is the additive
   `settings.json` hook merge performed by `cc-install-hooks`.
 
+[1.3.1]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.3.1
 [1.3.0]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.3.0
 [1.2.1]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.2.1
 [1.2.0]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.2.0

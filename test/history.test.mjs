@@ -44,6 +44,19 @@ test('redact leaves ordinary prompts (40-char SHAs, "keyboard:", "monkey=") unto
     assert.equal(redact('the monkey=funny meme'), 'the monkey=funny meme');
 });
 
+test('redact strips Slack webhook URLs, Google OAuth and npm tokens', () => {
+    const slack = redact('post to https://hooks.slack.com/services/T01ABCD2EFG/B03GHIJ4KLM/abcdefABCDEF1234567890zz');
+    assert.ok(!slack.includes('B03GHIJ4KLM'), 'slack webhook secret path redacted');
+    assert.ok(slack.includes('hooks.slack.com/services/‹redacted›'), 'host kept, secret path dropped');
+    assert.ok(!redact('use ya29.a0AfH6SMBx7Qom2lKj3nNqRtUvWxYz0123456789abc').includes('a0AfH6SMB'), 'google oauth token redacted');
+    assert.ok(!redact('publish with npm_abcdefghijklmnopqrstuvwxyz0123456789 now').includes('npm_abcdefghij'), 'bare npm token redacted');
+    // benign lookalikes survive — npm_config (underscore breaks the run) and a bare "ya29" with no dot.
+    assert.equal(redact('run npm_config and ya29 as a var name'), 'run npm_config and ya29 as a var name');
+    // threshold boundary locks {30,} against future drift: 29 trailing chars survive, 30 trip.
+    assert.ok(redact(`npm_${'a'.repeat(29)}`).includes(`npm_${'a'.repeat(29)}`), 'npm_ + 29 survives');
+    assert.ok(!redact(`npm_${'a'.repeat(30)} end`).includes('npm_aaa'), 'npm_ + 30 redacts');
+});
+
 test('parseHistory: newest-first, redacted, joins project→repo/cwd', () => {
     const lines = [
         { display: 'first prompt', project: '/Users/me/repo/alpha', sessionId: 'aaa', timestamp: 1000 },

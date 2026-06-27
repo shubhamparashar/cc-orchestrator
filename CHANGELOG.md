@@ -3,6 +3,18 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.3.7] — 2026-06-27
+
+### Fixed
+- **Two servers no longer clobber each other's session index.** `~/.claude/contexts/
+  index.json` was a single shared file, so a second server on another port (e.g. a
+  throwaway verify/dev instance) overwrote the primary's index on its reindex tick —
+  surfacing as missing search hits until the next rebuild. The index is now namespaced
+  by port (`indexFileForPort`): the default port keeps the legacy `index.json` name (no
+  migration), every other port writes its own `index-<port>.json`. Port resolution is
+  canonicalized with `Number()` to match the server's bind logic exactly, so a
+  non-canonical `PORT` can't point the index at a file the server never reads.
+
 ## [1.3.6] — 2026-06-27
 
 ### Security

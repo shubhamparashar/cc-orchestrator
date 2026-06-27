@@ -3,6 +3,19 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.5.0] — 2026-06-27
+
+### Added
+- **Per-session attribution: which skills, MCP servers, and sub-agent types a session
+  used (A5).** Each card now shows a `📜` badge listing the distinct skills run and a
+  `🔌` badge listing the MCP servers used (busiest-first, with the full `name×count`
+  breakdown in the tooltip), and the `⛬ subagents` tooltip gains a by-type breakdown
+  (e.g. `Explore×4`). `lib/health.mjs` derives these in its existing whole-transcript
+  pass from `attributionSkill`, `attributionMcpServer`, and the `Agent` tool's
+  `subagent_type` — guarding object keys so a crafted transcript can't use a JS-magic
+  key (`__proto__`/`constructor`/`prototype`/inherited methods) to corrupt the
+  aggregation maps. Surfaced on `s.health` in `/api/sessions`; no new endpoint.
+
 ## [1.4.0] — 2026-06-27
 
 ### Added

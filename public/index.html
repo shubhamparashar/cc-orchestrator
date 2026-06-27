@@ -241,6 +241,9 @@ kbd {
 }
 .badge.skill { color: var(--accent); border-color: rgba(74,143,208,.3); background: rgba(74,143,208,.08); cursor: help; }
 .badge.mcp { color: var(--green); border-color: rgba(53,168,116,.3); background: rgba(53,168,116,.08); cursor: help; }
+.badge.risk { color: var(--red); border-color: rgba(224,85,85,.42); background: rgba(224,85,85,.1); cursor: help; }
+.badge.stuck { color: var(--amber); border-color: rgba(232,160,62,.42); background: rgba(232,160,62,.1); cursor: help; }
+.health .fwrites { color: var(--dim); }
 .totalcost { color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; cursor: help; }
 
 /* ── global status chips (A8) ─────────────────────────────── */
@@ -906,9 +909,25 @@ function healthBlock(s) {
     return `<div class="health">
         <span class="hgauge ${cls}" title="tool-call error rate"><span class="gdot"></span>${h.errorRate}% err</span>
         <span>${h.totalCalls} calls</span>
+        ${h.writes > 0 ? `<span class="fwrites" title="${h.writes} file-write call${h.writes === 1 ? '' : 's'} across ${h.filesTouched} distinct file${h.filesTouched === 1 ? '' : 's'}">✎ ${h.filesTouched} file${h.filesTouched === 1 ? '' : 's'}</span>` : ''}
         ${tt ? `<span class="toptool" title="most-used tool">${esc(tt.name)} ${ttPct}%</span>` : ''}
         ${retry ? '<span class="retry" title="high error rate over many calls — possible stuck retry loop">⚠ retries</span>' : ''}
     </div>`;
+}
+
+// B-P1 triage — blast-radius (destructive shell ops) + stuck (consecutive errors).
+function triageBadges(s) {
+    const h = s.health;
+    if (!h) return '';
+    let out = '';
+    if (h.destructiveBash > 0) {
+        const kinds = chipSummary(h.destructiveKinds, 99).title;
+        out += `<span class="badge risk" title="destructive shell command${h.destructiveBash === 1 ? '' : 's'}: ${esc(kinds)}">⚠ ${h.destructiveBash} destructive</span>`;
+    }
+    if (h.maxErrorStreak >= 4) {
+        out += `<span class="badge stuck" title="${h.maxErrorStreak} tool errors in a row — possible retry loop / stuck session">⟳ stuck</span>`;
+    }
+    return out;
 }
 
 // Compact one {name: count} attribution map (skills, MCP servers, sub-agent
@@ -954,6 +973,7 @@ function cardHtml(s) {
             ${s.entrypoint ? `<span class="badge entry">${esc(String(s.entrypoint).replace('claude-',''))}</span>` : ''}
             ${s.isWorktree ? '<span class="badge wt">worktree</span>' : ''}
             ${metaBadges(s)}
+            ${triageBadges(s)}
             ${s.hasContext ? `<span class="badge ctx" tabindex="0" role="button" onclick="openCtx('${s.sessionId}')" onkeydown="if(event.key==='Enter')openCtx('${s.sessionId}')">${icn('ic-brain',11)} context</span>` : ''}
             ${s.cost && s.cost.totalUsd > 0 ? `<span class="badge cost" title="${esc(costTitle(s.cost))}">${icn('ic-coin',11)} ${fmtCost(s.cost.totalUsd)}</span>` : ''}
             ${s.subagents > 0 ? `<span class="badge subagents" title="${s.subagents} sub-agent transcript${s.subagents === 1 ? '' : 's'} (Explore/Task/workflow)${s.health && Object.keys(s.health.subagentTypes || {}).length ? ' · by type: ' + esc(chipSummary(s.health.subagentTypes, 99).title) : ''}${s.subagentCost > 0 ? ' · ' + fmtCost(s.subagentCost) + ' included in cost' : ''}">⛬ ${s.subagents} subagent${s.subagents === 1 ? '' : 's'}</span>` : ''}

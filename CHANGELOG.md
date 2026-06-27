@@ -3,6 +3,24 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.6.0] — 2026-06-27
+
+### Added
+- **Triage signals: blast radius + stuck detection (B-P1).** Each session card now
+  surfaces, from `lib/health.mjs`'s existing whole-transcript pass:
+  - a **`✎ N files` metric** in the health line — distinct files touched by
+    `Edit`/`Write`/`MultiEdit`/`NotebookEdit`;
+  - a red **`⚠ N destructive`** badge when the session ran high-blast-radius shell
+    commands (`git reset --hard`, `git push --force`, `git clean -f`, `drop`/`truncate`,
+    `dd of=`, `mkfs`, `chmod -R 777`, and `rm -rf` of root/home/sudo) — shown by
+    **category only**, never the raw command (which can carry a credential). Routine
+    recursive `rm` of build artifacts / scoped paths is intentionally not flagged, and
+    matching is per command-segment so `rm -rf dist && cd ..` isn't a false positive;
+  - an amber **`⟳ stuck`** badge when a session hits a run of consecutive tool errors
+    (≥4 in a row) — the "looping on the same error" signal.
+  All read-only, derived from data already scanned; aggregation keys are
+  prototype-pollution guarded.
+
 ## [1.5.0] — 2026-06-27
 
 ### Added

@@ -3,6 +3,17 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.7.0] — 2026-06-27
+
+### Added
+- **Keyboard-first board navigation (B-P1).** Drive the dashboard without the mouse:
+  `j`/`k` (or `↓`/`↑`) move a selection ring between sessions, `Enter` opens the chat,
+  `c` opens context, `s` sends a prompt, `f` forks, `t` attaches a terminal (local only),
+  `/` focuses the filter, `Esc` clears the selection, and `?` toggles a shortcuts
+  cheatsheet (also reachable from the new `⌨` header button). `⌘`/`Ctrl`+`K` still opens
+  the search launcher. Single-key shortcuts are ignored while typing in a field or while a
+  dialog is open, and the selection ring survives the periodic board refresh.
+
 ## [1.6.0] — 2026-06-27
 
 ### Added

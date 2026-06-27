@@ -293,6 +293,19 @@ main { padding: 12px clamp(14px,3vw,26px) 90px; max-width: 1380px; margin: 0 aut
     box-shadow: 8px 8px 18px rgba(100,140,180,.36), -6px -6px 14px rgba(255,255,255,.9);
     border-color: rgba(74,143,208,.28);
 }
+.card.selected {
+    --card-bg: #f5f9fe;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent), 8px 8px 18px rgba(74,143,208,.3), -6px -6px 14px rgba(255,255,255,.9);
+}
+.kbdtable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.kbdtable td { padding: 5px 8px; border-bottom: 1px solid rgba(100,140,180,.16); }
+.kbdtable td:first-child { white-space: nowrap; width: 1%; }
+kbd {
+    font-family: ui-monospace,'SF Mono',monospace; font-size: 11px; padding: 1px 6px; border-radius: 6px;
+    border: 1px solid rgba(100,140,180,.4); background: var(--inner); box-shadow: 0 1px 0 rgba(100,140,180,.3);
+    color: var(--text);
+}
 @supports (animation-timeline: view()) {
     @media (prefers-reduced-motion: no-preference) {
         #grid .card { animation: cardIn linear both; animation-timeline: view(); animation-range: entry 0% entry 42%; }
@@ -629,6 +642,7 @@ label.chk { font-size: 12.5px; color: var(--muted); display: inline-flex; gap: 7
     <button class="iconbtn" id="phoneBtn" title="Open on your phone">
         <svg class="icon" width="15" height="15"><use href="#ic-phone"/></svg> phone
     </button>
+    <button class="iconbtn" id="kbdBtn" title="Keyboard shortcuts (press ?)">⌨</button>
     <span class="meta" id="updated"></span>
 </header>
 
@@ -757,6 +771,28 @@ label.chk { font-size: 12.5px; color: var(--muted); display: inline-flex; gap: 7
         <span class="meta" id="chatLive" style="flex:1;min-width:0"></span>
         <button class="btn" id="chatSend"><svg class="icon" width="13" height="13"><use href="#ic-send"/></svg> Send prompt</button>
         <button class="btn" onclick="closeDlg('chatDialog')">Close</button>
+    </div>
+</div></dialog>
+
+<dialog id="kbdDialog"><div class="dlgpad">
+    <h3>⌨ Keyboard shortcuts</h3>
+    <p class="meta" style="margin:4px 0 10px">Navigate the board without the mouse. Keys are ignored while typing in a field or a dialog is open.</p>
+    <table class="kbdtable">
+        <tr><td><kbd>j</kbd></td><td>select next session (arrow keys still scroll the page)</td></tr>
+        <tr><td><kbd>k</kbd></td><td>select previous session</td></tr>
+        <tr><td><kbd>Enter</kbd></td><td>view chat for the selected session</td></tr>
+        <tr><td><kbd>c</kbd></td><td>open context (if the session has one)</td></tr>
+        <tr><td><kbd>s</kbd></td><td>send a prompt to the selected session</td></tr>
+        <tr><td><kbd>f</kbd></td><td>fork the selected session</td></tr>
+        <tr><td><kbd>t</kbd></td><td>open a terminal attached to it (local only)</td></tr>
+        <tr><td><kbd>/</kbd></td><td>focus the filter box</td></tr>
+        <tr><td><kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>open the search launcher</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>clear selection</td></tr>
+        <tr><td><kbd>?</kbd></td><td>toggle this help</td></tr>
+    </table>
+    <div class="dlgrow">
+        <span style="flex:1"></span>
+        <button class="btn" onclick="closeDlg('kbdDialog')">Close</button>
     </div>
 </div></dialog>
 
@@ -957,7 +993,7 @@ function attributionBadges(s) {
 
 function cardHtml(s) {
     return `
-    <div class="card">
+    <div class="card" data-sid="${esc(s.sessionId)}">
         <div class="row1">
             <span class="dot ${s.status}" title="${esc(s.status)}"></span>
             <span class="title" title="${esc(s.title)}">${esc(s.title)}</span>
@@ -1066,6 +1102,7 @@ function render() {
             ${more ? `<div class="colmore">+${more} more — filter to see</div>` : ''}
         </div>`;
     }).join('');
+    applySelection(); // re-apply the keyboard selection ring after the grid rebuilds
 }
 
 function applySessions(data) {
@@ -1304,11 +1341,78 @@ document.getElementById('launcherQ').addEventListener('keydown', (e) => {
     if (e.key === 'Escape') clearMatches();
 });
 
+// Keyboard-first board navigation. selectedId persists across the periodic grid
+// rebuild; applySelection() (called at the end of render) re-paints the ring.
+let selectedId = null;
+
+function visibleCardIds() {
+    return [...document.querySelectorAll('#grid .card')].map((c) => c.dataset.sid).filter(Boolean);
+}
+
+function applySelection() {
+    document.querySelectorAll('#grid .card.selected').forEach((c) => c.classList.remove('selected'));
+    if (!selectedId) return;
+    const el = document.querySelector(`#grid .card[data-sid="${selectedId}"]`);
+    if (el) el.classList.add('selected');
+    else selectedId = null; // the selected session is no longer visible (filtered/closed)
+}
+
+function selectCard(id) {
+    selectedId = id;
+    applySelection();
+    const el = document.querySelector(`#grid .card[data-sid="${selectedId}"]`);
+    if (el) el.scrollIntoView({ block: 'nearest' });
+}
+
+function moveSelection(delta) {
+    const ids = visibleCardIds();
+    if (!ids.length) return;
+    let i = ids.indexOf(selectedId);
+    if (i === -1) i = delta > 0 ? -1 : ids.length; // j → first card, k → last card
+    selectCard(ids[Math.max(0, Math.min(ids.length - 1, i + delta))]);
+}
+
+function clearSelection() { selectedId = null; applySelection(); }
+
+function toggleKbdHelp() {
+    const d = document.getElementById('kbdDialog');
+    if (d.open) closeDlg('kbdDialog'); else d.showModal();
+}
+
+document.getElementById('kbdBtn').onclick = toggleKbdHelp;
+
 document.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         document.getElementById('launcherQ').focus();
         document.getElementById('launcherQ').select();
+        return;
+    }
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const ae = document.activeElement;
+    // Typing in a field is never hijacked (covers '?' typed into the filter / send box).
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
+    const dialogOpen = [...document.querySelectorAll('dialog')].some((d) => d.open);
+    if (e.key === '?') {
+        // Toggle help, but never stack it on top of a different modal.
+        if (!dialogOpen || document.getElementById('kbdDialog').open) { e.preventDefault(); toggleKbdHelp(); }
+        return;
+    }
+    if (dialogOpen) return; // a modal is up — leave its own keys (Esc, Enter on its buttons) alone
+    // A focused button/link/select handles its own Enter/Space — don't also fire a board action.
+    if (ae && (ae.tagName === 'BUTTON' || ae.tagName === 'A' || ae.tagName === 'SELECT' || ae.getAttribute?.('role') === 'button')) return;
+    const s = selectedId && findSession(selectedId);
+    switch (e.key) {
+        case 'j': e.preventDefault(); moveSelection(1); break;
+        case 'k': e.preventDefault(); moveSelection(-1); break;
+        case 'Enter': if (selectedId) { e.preventDefault(); openChat(selectedId); } break;
+        case 'c': if (s && s.hasContext) openCtx(selectedId); break;
+        case 's': if (selectedId) openSend(selectedId, false); break;
+        case 'f': if (selectedId) openSend(selectedId, true); break;
+        case 't': if (selectedId && !IS_REMOTE) attach(selectedId); break;
+        case '/': e.preventDefault(); document.getElementById('q').focus(); break;
+        case 'Escape': clearSelection(); break;
+        default: break;
     }
 });
 

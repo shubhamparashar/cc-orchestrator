@@ -241,6 +241,15 @@ kbd {
 }
 .totalcost { color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; cursor: help; }
 
+/* ── global status chips (A8) ─────────────────────────────── */
+.ccchips { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ccchip {
+    font-size: 10.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+    border: 1px solid rgba(125,139,154,.28); color: var(--muted); background: var(--inner);
+    display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; cursor: help;
+}
+.ccchip.warn { color: var(--amber); border-color: rgba(232,160,62,.4); background: rgba(232,160,62,.1); }
+
 /* ── context ring ────────────────────────────────────────── */
 .ring { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .ring svg { transform: rotate(-90deg); display: block; }
@@ -594,6 +603,7 @@ label.chk { font-size: 12.5px; color: var(--muted); display: inline-flex; gap: 7
         <span class="logo">cc-orchestrator</span>
     </span>
     <span class="meta" id="counts"></span>
+    <span class="ccchips" id="ccstatus"></span>
     <span class="spacer"></span>
     <input type="search" id="q" placeholder="filter sessions…">
     <select id="statusFilter">
@@ -781,6 +791,13 @@ function fmtCost(usd) {
     return '$0.00';
 }
 
+function fmtTokens(n) {
+    if (!n || !Number.isFinite(n)) return '';
+    if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (n >= 1e3) return Math.round(n / 1e3) + 'k';
+    return String(n);
+}
+
 function tokenTotal(t) {
     return (t.input || 0) + (t.output || 0) + (t.cacheRead || 0) + (t.cacheWrite5m || 0) + (t.cacheWrite1h || 0);
 }
@@ -913,7 +930,7 @@ function cardHtml(s) {
             ${s.hasContext ? `<span class="badge ctx" tabindex="0" role="button" onclick="openCtx('${s.sessionId}')" onkeydown="if(event.key==='Enter')openCtx('${s.sessionId}')">${icn('ic-brain',11)} context</span>` : ''}
             ${s.cost && s.cost.totalUsd > 0 ? `<span class="badge cost" title="${esc(costTitle(s.cost))}">${icn('ic-coin',11)} ${fmtCost(s.cost.totalUsd)}</span>` : ''}
             ${s.subagents > 0 ? `<span class="badge subagents" title="${s.subagents} sub-agent transcript${s.subagents === 1 ? '' : 's'} (Explore/Task/workflow)${s.subagentCost > 0 ? ' · ' + fmtCost(s.subagentCost) + ' included in cost' : ''}">⛬ ${s.subagents} subagent${s.subagents === 1 ? '' : 's'}</span>` : ''}
-            ${s.health && s.health.compactions > 0 ? `<span class="badge compact" title="context compacted ${s.health.compactions}× — a handoff/split candidate">${icn('ic-brain',11)} ${s.health.compactions}× compact</span>` : ''}
+            ${s.health && s.health.compactions > 0 ? `<span class="badge compact" title="context compacted ${s.health.compactions}×${s.health.lastCompactPreTokens ? ' — last at ~' + fmtTokens(s.health.lastCompactPreTokens) + ' tokens' : ''} — a handoff/split candidate">${icn('ic-brain',11)} ${s.health.compactions}× compact${s.health.lastCompactPreTokens ? ' · ~' + fmtTokens(s.health.lastCompactPreTokens) : ''}</span>` : ''}
             ${(s.prNumbers || []).map((n) => `<span class="badge pr">${icn('ic-pr',11)} PR #${esc(n)}${s.prState ? ' · ' + esc(s.prState) : ''}</span>`).join('')}
         </div>
         ${progressBlock(s)}
@@ -1028,6 +1045,35 @@ async function load() {
         }
         loadDiag(); // refresh the bug-report link with the latest server error
     }
+}
+
+function renderStatus(st) {
+    const el = document.getElementById('ccstatus');
+    if (!el) return;
+    if (!st) { el.innerHTML = ''; return; }
+    const chips = [];
+    if (st.version) {
+        const failed = st.updateOk === false;
+        chips.push(`<span class="ccchip${failed ? ' warn' : ''}" title="${failed ? 'last Claude Code auto-update did not finish cleanly' : 'Claude Code version (last successful update)'}">CC v${esc(st.version)}</span>`);
+    }
+    if (st.approvalMode) {
+        chips.push(`<span class="ccchip" title="Claude Code approval mode">${esc(st.approvalMode)}</span>`);
+    }
+    const n = (st.mcpNeedsAuth || []).length;
+    if (n > 0) {
+        const names = st.mcpNeedsAuth.map(esc).join(', ');
+        chips.push(`<span class="ccchip warn" title="MCP servers needing re-auth: ${names}">${n} MCP${n === 1 ? '' : 's'} need re-auth</span>`);
+    }
+    el.innerHTML = chips.join('');
+}
+
+async function loadStatus() {
+    // Best-effort: status chips must never block or break the board.
+    try {
+        const res = await fetch('/api/status', { signal: AbortSignal.timeout(8000) });
+        if (!res.ok) return;
+        renderStatus(await res.json());
+    } catch { /* leave the previous chips in place */ }
 }
 
 // Point the "Report a bug" link at a prefilled (sanitized) GitHub issue; falls
@@ -1587,15 +1633,19 @@ function disconnectEvents() {
 
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) disconnectEvents();
-    else { connectEvents(); load(); loadJobs(); }
+    else { connectEvents(); load(); loadJobs(); loadStatus(); }
 });
 
 // A tab opened in the background never fires visibilitychange until first
 // focused — connecting it eagerly would hold a per-origin connection slot.
 if (!document.hidden) connectEvents();
 setInterval(() => { if (!document.hidden) load(); }, 20000);
+// Global status (CC version / approval mode / MCP re-auth) changes rarely, so it
+// polls on a slower cadence than the session board.
+setInterval(() => { if (!document.hidden) loadStatus(); }, 120000);
 load();
 loadJobs();
+loadStatus();
 loadDiag();
 </script>
 </body>

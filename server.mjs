@@ -24,6 +24,7 @@ import { sendPrompt, listJobs, stopJob, dismissJob, attachInTerminal, attachComm
 import { CONTEXTS_DIR, contextPathFor, isSessionUuid, listContextSessions, loadIndex, readContext } from './lib/contextStore.mjs';
 import { buildSessionIndex } from './lib/sessionIndex.mjs';
 import { rankDocs } from './lib/rank.mjs';
+import { claudeStatus } from './lib/status.mjs';
 import {
     COOKIE_NAME, getCookie, getToken, hostAllowed, isLocalRequest, isSecureRequest,
     rateLimitKey, recordFailure, remoteLink, setCookieHeader, tokenMatches, tooManyFailures,
@@ -522,6 +523,13 @@ const handler = async (req, res) => {
         }
         if (req.method === 'GET' && url.pathname === '/api/pricing') {
             return sendJson(res, 200, loadPricing());
+        }
+        if (req.method === 'GET' && url.pathname === '/api/status') {
+            // CC version, approval mode, and the NAMES of MCP servers needing re-auth.
+            // The per-server id/token is never read, so no secret leaves the box — only
+            // local config metadata. Served to authenticated remote viewers too, since
+            // the "N MCPs need re-auth" chip is meant to be visible on the phone.
+            return sendJson(res, 200, await claudeStatus());
         }
         if (req.method === 'GET' && url.pathname === '/api/diag') {
             // Only a loopback caller (the Mac itself, single user) gets the last

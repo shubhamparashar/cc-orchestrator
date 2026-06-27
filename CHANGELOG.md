@@ -3,6 +3,20 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.3.8] — 2026-06-27
+
+### Changed
+- **Smaller session index, wider sub-agent search recall.** Each sub-agent search
+  doc stored a raw ~4 KB tail of its most recent dialogue; the index is now built
+  from a deduped significant-term bag over the agent's WHOLE dialogue (the same
+  compression used for session prompt bodies, now a shared `termBag` helper). The
+  sub-agent bodies — the bulk of the index — shrink ~50% (`index.json` ~32% smaller
+  overall: 3.6 MB → 2.4 MB on a 581-sub-agent corpus), while recall *improves*: a
+  term mentioned early in a long agent is now searchable instead of being lost with
+  the old recent-only tail. Distinct vocabulary is kept over raw repetition (presence
+  over frequency), so BM25F's IDF still weights the rare, high-signal terms. The index
+  is rebuilt from transcripts on the next reindex, so no migration is needed.
+
 ## [1.3.7] — 2026-06-27
 
 ### Fixed

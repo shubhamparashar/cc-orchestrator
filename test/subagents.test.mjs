@@ -175,11 +175,14 @@ test('subagentDocsFor returns one navigable doc per transcript with the expected
     }
 });
 
-test('subagent doc body is dialogue-only (no synthetic / harness turns)', async () => {
+test('subagent doc body is a deduped term bag of real dialogue (no synthetic / harness turns)', async () => {
     const docs = await subagentDocsFor(PROJECTS, PROJ, SESS, 'myrepo');
     const task = docs.find((d) => d.id === 'agent-task02');
     // task02's transcript contains a "<system-reminder>" user line — it must not
     // appear in the indexed body.
     assert.ok(!task.body.includes('system-reminder'), 'synthetic turn excluded from body');
-    assert.ok(task.body.includes('Refactor') || task.body.includes('Refactoring'), 'real dialogue present');
+    assert.ok(task.body.includes('refactor'), 'real dialogue term present (tokenized, lowercased)');
+    // The body is now a space-joined bag of lowercase significant tokens, not raw prose.
+    assert.equal(task.body, task.body.toLowerCase(), 'body is tokenized (lowercased)');
+    assert.ok(!/[A-Z]/.test(task.body), 'no uppercase prose survives tokenization');
 });

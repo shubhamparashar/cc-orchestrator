@@ -22,6 +22,10 @@ npx github:shubhamparashar/cc-orchestrator    # → http://127.0.0.1:7433
 # Or from a clone (zero dependencies, no build step):
 git clone https://github.com/shubhamparashar/cc-orchestrator.git && cd cc-orchestrator
 node server.mjs                                # → http://127.0.0.1:7433
+
+# Or via Homebrew (installs node, gives the commands + `brew services`):
+brew install --build-from-source ./Formula/cc-orchestrator.rb
+brew services start cc-orchestrator           # always-on, replaces the LaunchAgent
 ```
 
 Requires **Node ≥ 20** (no npm install — zero dependencies). Open the URL in your browser.

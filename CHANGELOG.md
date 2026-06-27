@@ -3,6 +3,17 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.8.0] — 2026-06-27
+
+### Added
+- **Homebrew formula + contributing guide (C1 distribution).** `Formula/cc-orchestrator.rb`
+  installs the zero-dep server (`depends_on "node"`), wires the `cc-orchestrator` /
+  `cc-doctor` / `cc-install-hooks` / `cc-logs` commands, and ships a `brew services`
+  definition so always-on is just `brew services start cc-orchestrator` (replacing the
+  hand-run LaunchAgent script). `CONTRIBUTING.md` documents dev setup, the throwaway-port
+  workflow, tests, code style, the security-sensitive surfaces, and the release/handoff
+  conventions; the README gains a Homebrew quickstart line.
+
 ## [1.7.0] — 2026-06-27
 
 ### Added

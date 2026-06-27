@@ -71,6 +71,60 @@ test('sessionHealth aggregates A5 attribution (sub-agent types, skills, MCP serv
     }
 });
 
+test('sessionHealth derives blast-radius + stuck signals (writes, files, destructive kinds, error streak)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cc-health-risk-'));
+    const path = join(dir, 't.jsonl');
+    const tu = (name, input) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', name, input }] } });
+    const res = (isErr) => ({ type: 'user', message: { content: [{ type: 'tool_result', is_error: isErr }] } });
+    const records = [
+        tu('Edit', { file_path: '/a' }),
+        tu('Edit', { file_path: '/a' }), // same file — distinct count stays 1 for /a
+        tu('Write', { file_path: '/b' }),
+        tu('Bash', { command: 'rm -rf /' }), // catastrophic root target
+        tu('Bash', { command: 'sudo rm -rf /var/lib/data' }), // sudo recursive
+        tu('Bash', { command: 'rm --recursive --force ~' }), // bare home, long flags
+        tu('Bash', { command: 'git reset --hard HEAD~1' }),
+        tu('Bash', { command: 'dd if=/dev/zero of=/dev/sda' }), // destructive operand of=, any order
+        tu('Bash', { command: 'git push origin main --force-with-lease' }), // NOT destructive (excluded)
+        tu('Bash', { command: 'sudo docker run --rm --network host img' }), // NOT — --rm is a flag, not the rm command
+        tu('Bash', { command: 'rm -rf node_modules' }), // NOT — routine recursive rm, safe target
+        tu('Bash', { command: 'rm -rf ~/.cache/foo' }), // NOT — scoped under home, not bare ~
+        tu('Bash', { command: 'rm -rf /tmp/scratch' }), // NOT — scoped path, not root/home
+        tu('Bash', { command: 'rm my-report.txt' }), // NOT — filename, not a recursive flag
+        tu('Bash', { command: 'ls -la' }), // benign
+        { type: 'user', message: { content: [{ type: 'tool_result', is_error: true }, { type: 'tool_result', is_error: true }] } },
+        res(false), // success resets the streak
+        res(true),
+    ];
+    try {
+        writeFileSync(path, records.map((r) => JSON.stringify(r)).join('\n') + '\n');
+        const h = await sessionHealth(path);
+        assert.strictEqual(h.writes, 3, '3 file-mutating calls');
+        assert.strictEqual(h.filesTouched, 2, 'distinct files /a and /b');
+        assert.strictEqual(h.destructiveBash, 5, 'rm-/ + sudo rm + rm ~ + git reset --hard + dd; not the scoped/routine rms, force-with-lease, or ls');
+        assert.deepStrictEqual(h.destructiveKinds, { 'rm -rf root/home': 3, 'git reset --hard': 1, 'dd of=': 1 });
+        assert.strictEqual(h.maxErrorStreak, 2, 'two consecutive errors before the success reset');
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('maxErrorStreak spans the incremental-append boundary', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cc-health-streak-'));
+    const path = join(dir, 'grow.jsonl');
+    const errRes = JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', is_error: true }] } }) + '\n';
+    try {
+        writeFileSync(path, errRes + errRes); // two consecutive errors
+        const first = await sessionHealth(path);
+        assert.strictEqual(first.maxErrorStreak, 2);
+        appendFileSync(path, errRes); // a third error after the cached byte offset
+        const second = await sessionHealth(path);
+        assert.strictEqual(second.maxErrorStreak, 3, 'the streak continues across the append boundary');
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+
 test('sessionHealth folds a later compaction in via the incremental-append path (last preTokens wins)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'cc-health-'));
     const path = join(dir, 'grow.jsonl');

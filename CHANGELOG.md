@@ -3,6 +3,21 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.3.6] — 2026-06-27
+
+### Security
+- **Broader secret redaction in the prompt palette and bug-report URL.** The
+  `redact()` net (shared by `/api/history` and the consent-gated issue link) now
+  also catches **Slack incoming-webhook URLs** (the `hooks.slack.com/services/…`
+  path is collapsed, host kept), **Google OAuth `ya29.` access tokens**, and bare
+  **`npm_` tokens** — common pasted credentials the previous shapes missed. The
+  palette is reachable from a phone over Tailscale and the issue URL is meant to be
+  pasted publicly, so these were real leak gaps. All three patterns are linear (no
+  ReDoS) and tuned to avoid false positives (`npm_config` and a bare `ya29` survive).
+  Verified end-to-end against the live `/api/history` endpoint. A wider audit of the
+  remaining surfaces (OS-spawn, ReDoS, prototype pollution, path traversal,
+  DNS-rebinding/CORS) found no exploitable issues.
+
 ## [1.3.5] — 2026-06-27
 
 ### Security

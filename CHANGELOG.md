@@ -3,6 +3,24 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.4.0] — 2026-06-27
+
+### Added
+- **Global status chips in the header (A8).** A new chip row beside the session counts
+  shows the installed Claude Code version, the configured approval mode, and how many MCP
+  servers are flagged for re-auth (their names in the chip's tooltip). Read from three
+  small `~/.claude` files — `.last-update-result.json`, `config.json`,
+  `mcp-needs-auth-cache.json` — via a tolerant `lib/status.mjs` (a missing or malformed
+  file degrades to "signal unavailable", never an error) and served at `GET /api/status`.
+  No secret leaves the box: only the version, the approval-mode string, and MCP server
+  names are exposed (never the per-server id/token), so the chips are safe to show on the
+  authenticated phone dashboard too.
+- **Compaction badge now shows where context filled up (A4).** The per-session
+  "N× compact" badge gains a "· ~969k" suffix — the context size (pre-compaction tokens)
+  at the most recent compaction — turning it into a sharper handoff/split signal.
+  `lib/health.mjs` reads `compactMetadata.preTokens` from the last `compact_boundary`
+  during its existing whole-transcript pass, correct across the incremental-append path.
+
 ## [1.3.8] — 2026-06-27
 
 ### Changed

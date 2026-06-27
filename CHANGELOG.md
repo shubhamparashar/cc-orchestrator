@@ -3,6 +3,32 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.3.5] — 2026-06-27
+
+### Security
+- **CSRF is now enforced on every state-changing request, including loopback.**
+  The first-party `X-CC` header was previously required only for authenticated
+  *remote* POSTs — loopback mutating requests were unguarded. A page the user
+  visits can issue a "simple" cross-origin POST to `127.0.0.1:7433`, which would
+  have reached `/api/send` (spawns `claude`) or `/api/attach` (opens a terminal).
+  Every non-`GET`/`HEAD` request now requires `X-CC: 1` — a custom header a
+  cross-origin form or simple fetch cannot set without a CORS preflight this
+  server never answers — closing the drive-by vector.
+- **`/api/send` and `/api/attach` now validate `sessionId` as a UUID.** A
+  malformed `sessionId` previously reached the spawn/attach path; it is now
+  rejected with `400` before any process is launched.
+- **Prototype pollution via the transcript `model` field is blocked.** The
+  attacker-controllable `model` value was used as an object key during cost
+  accumulation, so `__proto__` / `constructor` / `prototype` could write onto
+  `Object.prototype`. Those keys are now skipped across every accumulation path;
+  real model ids are never these, so no genuine usage is dropped.
+- **Auth identity hardening.** The rate-limit key trusts `X-Forwarded-For` only
+  when the socket peer is loopback (a local reverse proxy such as Tailscale
+  serve), so a direct LAN/remote peer can no longer rotate its `XFF` to evade the
+  failed-auth limit — its socket address is the one identity it can't forge.
+  Cookie parsing now tolerates a malformed `%`-escape instead of throwing, which
+  in the pre-handler path would have left the request hanging.
+
 ## [1.3.4] — 2026-06-26
 
 ### Fixed

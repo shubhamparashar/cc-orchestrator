@@ -3,6 +3,14 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.11.1] — 2026-06-28
+
+### Fixed
+- **Copy confirmation now shows on top.** The "copied" feedback was a bottom-corner toast,
+  but the chat panel is a modal dialog the browser paints in the top layer — so the toast
+  appeared behind it and was invisible, especially on a phone. The confirmation now flashes
+  as a pill on the bubble you tapped, inside the dialog, so it's always visible.
+
 ## [1.11.0] — 2026-06-28
 
 ### Added

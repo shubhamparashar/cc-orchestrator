@@ -447,6 +447,8 @@ label.chk { font-size: 12.5px; color: var(--muted); display: inline-flex; gap: 7
 .job.done { border-left-color: var(--green); }
 .job.error { border-left-color: var(--red); }
 .job pre { white-space: pre-wrap; margin: 6px 0 0; color: var(--dim); max-height: 150px; overflow: auto; font-size: 11.5px; }
+.jobacts { display: flex; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
+.jobacts .btn { padding: 4px 9px; font-size: 11.5px; }
 
 .iconbtn {
     background: var(--card); color: var(--dim);
@@ -1032,6 +1034,7 @@ function cardHtml(s) {
             ${IS_REMOTE ? '' : `<button class="btn" onclick="attach('${s.sessionId}')" title="opens Terminal on your Mac">${icn('ic-terminal')} Terminal</button>`}
             <button class="btn" onclick="openSend('${s.sessionId}', false)">${icn('ic-send')} Send prompt</button>
             <button class="btn ghost" onclick="openSend('${s.sessionId}', true)">${icn('ic-fork')} Fork…</button>
+            ${IS_REMOTE ? '' : `<button class="btn ghost" onclick="attach('${s.sessionId}', null, true)" title="fork into a live interactive session in Terminal">${icn('ic-fork')} Fork ⇢ terminal</button>`}
         </div>
     </div>`;
 }
@@ -1187,11 +1190,11 @@ async function loadDiag() {
 
 function findSession(id) { return state.sessions.find((s) => s.sessionId === id); }
 
-async function attach(id, cwd) {
+async function attach(id, cwd, fork = false) {
     const dir = cwd ?? findSession(id)?.cwd;
     try {
         const res = await fetch('/api/attach', { method: 'POST', headers: {'Content-Type':'application/json','X-CC':'1'},
-            body: JSON.stringify({ sessionId: id, cwd: dir }), signal: AbortSignal.timeout(8000) });
+            body: JSON.stringify({ sessionId: id, cwd: dir, fork }), signal: AbortSignal.timeout(8000) });
         const d = await res.json();
         if (!d.ok) { navigator.clipboard?.writeText(d.command); alert('Could not open Terminal (' + (d.error||'?') + ').\nCommand copied to clipboard:\n' + d.command); }
     } catch (err) {
@@ -1658,11 +1661,22 @@ function renderJobs() {
         ${j.status !== 'running' ? `<button class="job-x" title="dismiss" aria-label="dismiss" onclick="dismissJobCard(${j.id})">${icn('ic-x', 13)}</button>` : ''}
         <b>${j.status === 'running' ? '⏳' : j.status === 'done' ? '✅' : '❌'} job ${j.id}</b>
         → ${esc(j.sessionId.slice(0,8))}${j.fork ? ' (fork)' : ''} · ${esc(j.text)}
-        ${j.result?.forked ? `<div style="color:var(--amber)">forked → ${esc(j.result.sessionId.slice(0,8))}</div>` : ''}
+        ${j.result?.forked ? `<div style="color:var(--amber)">forked → ${esc(j.result.sessionId.slice(0,8))}</div>
+        <div class="jobacts">
+            <button class="btn" onclick="openChat('${j.result.sessionId}')">${icn('ic-message',12)} Open</button>
+            <button class="btn" onclick="openSend('${j.result.sessionId}', false)">${icn('ic-send',12)} Continue</button>
+            ${IS_REMOTE ? '' : `<button class="btn" onclick="attachFork('${j.result.sessionId}','${j.sessionId}')">${icn('ic-terminal',12)} Terminal</button>`}
+        </div>` : ''}
         ${j.result?.text ? `<pre>${esc(j.result.text)}</pre>` : ''}
         ${j.error ? `<pre>${esc(j.error)}</pre>` : ''}
         ${j.status === 'running' ? `<button class="btn" style="margin-top:6px" onclick="stopJob(${j.id})">Stop</button>` : ''}
     </div>`).join('');
+}
+
+// Open a freshly-forked session in a Terminal. The fork inherits the parent's cwd;
+// fall back to it when the fork is not in the board index yet.
+function attachFork(forkId, parentId) {
+    attach(forkId, findSession(forkId)?.cwd ?? findSession(parentId)?.cwd, false);
 }
 
 async function stopJob(id) {

@@ -529,9 +529,16 @@ label.chk { font-size: 12.5px; color: var(--muted); display: inline-flex; gap: 7
 .chatmsg.assistant .who { color: var(--accent); }
 .chatmsg .bubble {
     font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
-    border-radius: 13px; padding: 9px 13px; max-width: 90%; cursor: pointer;
+    border-radius: 13px; padding: 9px 13px; max-width: 90%; cursor: pointer; position: relative;
 }
 .chatmsg .bubble:hover { filter: brightness(0.96); }
+.chatmsg .bubble.flash::after {
+    content: attr(data-flash);
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    background: var(--accent); color: #fff; font-size: 11px; font-weight: 700;
+    padding: 4px 11px; border-radius: 999px; box-shadow: var(--clay-sm);
+    white-space: nowrap; pointer-events: none; animation: toastIn .18s ease both;
+}
 .chatmsg.user .bubble { background: linear-gradient(135deg, var(--accent-lt), var(--accent)); color: #fff; box-shadow: var(--clay-sm); }
 .chatmsg.assistant .bubble { background: var(--card); color: var(--text); border: 1.5px solid rgba(255,255,255,.6); box-shadow: var(--clay-sm); }
 @media (max-width: 700px) { .chatmsg .bubble { max-width: 96%; } }
@@ -1792,8 +1799,18 @@ function renderChat(msgs, scrollToEnd) {
 function copyBubble(e, el) {
     if (String(window.getSelection() || '').length) return;
     const text = el.textContent;
-    if (!navigator.clipboard) { toast('❌ clipboard unavailable'); return; }
-    navigator.clipboard.writeText(text).then(() => toast('📋 copied'), () => toast('❌ copy failed'));
+    if (!navigator.clipboard) { flashBubble(el, 'no clipboard'); return; }
+    navigator.clipboard.writeText(text).then(() => flashBubble(el, 'copied ✓'), () => flashBubble(el, 'copy failed'));
+}
+
+// Copy feedback lives ON the bubble (a transient ::after pill), not the global
+// toast: the chat panel is a modal <dialog> in the browser top layer, so a
+// bottom-corner toast renders behind it and is invisible (notably on a phone).
+function flashBubble(el, label) {
+    el.dataset.flash = label;
+    el.classList.add('flash');
+    clearTimeout(el._flashTimer);
+    el._flashTimer = setTimeout(() => el.classList.remove('flash'), 1100);
 }
 
 document.getElementById('chatSend').onclick = () => { if (chatSession) openSend(chatSession, false); };

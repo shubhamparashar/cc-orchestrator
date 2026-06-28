@@ -3,6 +3,13 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.11.0] — 2026-06-28
+
+### Added
+- **Click a chat message to copy it.** In the View chat panel, clicking any message bubble
+  copies its full text to the clipboard (with a "copied" toast). Selecting text by dragging
+  still works — the copy only fires on a plain click with no active selection.
+
 ## [1.10.0] — 2026-06-28
 
 ### Added

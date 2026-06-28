@@ -390,12 +390,16 @@ kbd {
 dialog {
     background: var(--card); color: var(--text);
     border: 1.5px solid rgba(255,255,255,.76); border-radius: var(--r-xl);
-    padding: 0; width: min(640px,92vw);
+    padding: 0; width: min(640px,92vw); max-height: 92vh;
     box-shadow: 12px 12px 32px rgba(100,140,180,.38), -8px -8px 20px rgba(255,255,255,.72);
     overflow: hidden;
 }
+/* Scoped to [open] so a closed dialog keeps the UA display:none. A flex column
+   with a scrollable padded body keeps the footer (Close) reachable when tall
+   content — e.g. an expanded <details> — would otherwise overflow the viewport. */
+dialog[open] { display: flex; flex-direction: column; }
 dialog::backdrop { background: rgba(44,55,68,.32); backdrop-filter: blur(6px); }
-dialog > .dlgpad { padding: 22px; }
+dialog > .dlgpad { padding: 22px; overflow-y: auto; min-height: 0; }
 dialog h3 { margin: 0 0 4px; font-size: 16px; font-weight: 700; letter-spacing: -.015em; color: var(--text); display: flex; align-items: center; gap: 7px; }
 textarea {
     width: 100%; min-height: 112px; background: var(--inner); color: var(--text);
@@ -1087,11 +1091,21 @@ function render() {
     populateLaunchRepos();
 
     const grid = document.getElementById('grid');
-    grid.className = 'board';
     if (!shown.length) {
+        grid.className = 'board';
         grid.innerHTML = '<div class="empty">no sessions match</div>';
         return;
     }
+    // A status filter narrows to a single bucket, so drop the bucketed columns and
+    // headers entirely and lay the matches out as a plain responsive card grid —
+    // only the sessions you filtered for, no other-bucket headers or empty columns.
+    if (sf) {
+        grid.className = '';
+        grid.innerHTML = shown.map(cardHtml).join('');
+        applySelection();
+        return;
+    }
+    grid.className = 'board';
     grid.innerHTML = BOARD.map((b) => {
         const all = shown.filter(b.match);
         const cards = b.cap && all.length > b.cap ? all.slice(0, b.cap) : all;
@@ -1756,6 +1770,13 @@ document.getElementById('chatDialog').addEventListener('close', () => {
 });
 
 ['q','statusFilter','repoFilter'].forEach((id) => document.getElementById(id).addEventListener('input', render));
+
+// Tap/click the backdrop (the area outside the padded body) to dismiss a dialog —
+// the primary close affordance on a phone, where there is no Esc key. A click on
+// the dialog's own content bubbles up with e.target set to the child, not the dialog.
+document.querySelectorAll('dialog').forEach((d) => {
+    d.addEventListener('click', (e) => { if (e.target === d) closeDlg(d.id); });
+});
 
 // One SSE connection per visible tab. Closing in hidden tabs avoids exhausting
 // the browser's 6-connections-per-origin pool when several tabs are open.

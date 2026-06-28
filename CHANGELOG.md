@@ -3,6 +3,16 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.10.0] — 2026-06-28
+
+### Added
+- **"Fork ⇢ auto" — fork into an autonomous session.** A second local-only fork button on
+  each session card opens `claude --resume <id> --fork-session --dangerously-skip-permissions`
+  in a Terminal: a live fork that runs without stopping for permission prompts. Because a
+  skip-permissions agent can edit files and run commands unattended, the button asks for an
+  explicit confirmation first, and (like every terminal-launch action) is hidden when the
+  dashboard is opened remotely.
+
 ## [1.9.0] — 2026-06-28
 
 ### Added

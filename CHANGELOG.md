@@ -3,6 +3,19 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.9.0] — 2026-06-28
+
+### Added
+- **Fork into a live interactive session.** Forking from the dashboard previously ran a
+  headless one-shot, so the new forked session landed idle and never actually ran. Each
+  session card now has a local-only "Fork ⇢ terminal" button that opens
+  `claude --resume <id> --fork-session` in a real Terminal — a live, interactive fork
+  rather than a single headless turn.
+- **Actionable forked-job results.** When a headless fork job finishes, its
+  `forked → <id>` line now offers Open, Continue, and (locally) Terminal actions, so the
+  fork can be picked up in-app or on a phone. Continue and the terminal-attach resume the
+  existing fork id and never re-fork.
+
 ## [1.8.2] — 2026-06-28
 
 ### Fixed

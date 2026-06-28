@@ -3,6 +3,23 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.8.2] — 2026-06-28
+
+### Fixed
+- **Status filter now collapses the board to just that bucket.** Picking a status in
+  the filter (e.g. `running`) used to keep rendering all four bucket columns and their
+  headers, with the non-matching ones showing "none". It now drops the bucketed chrome
+  entirely and lays the matching sessions out as a plain responsive card grid — only
+  the sessions you filtered for, no other headers or empty columns. Clearing the filter
+  restores the full board. Keyboard selection still works in the filtered view.
+- **"Open on your phone" dialog can be scrolled and closed.** Expanding the "First time?
+  Set up Tailscale" disclosure made the dialog grow past the screen; with the dialog
+  clipped (`overflow:hidden`) and no max height, the content — including the Close
+  button — was cut off, and on a phone there's no Esc key, so there was no way out.
+  Dialogs now cap at `92vh` with a scrollable body (`max-height` + `overflow-y:auto`),
+  keeping the footer reachable, and a tap on the backdrop dismisses any dialog — the
+  natural close gesture on a phone. Applies to every dialog, not just the phone panel.
+
 ## [1.8.1] — 2026-06-28
 
 ### Fixed

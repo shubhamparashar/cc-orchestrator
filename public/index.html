@@ -529,8 +529,9 @@ label.chk { font-size: 12.5px; color: var(--muted); display: inline-flex; gap: 7
 .chatmsg.assistant .who { color: var(--accent); }
 .chatmsg .bubble {
     font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
-    border-radius: 13px; padding: 9px 13px; max-width: 90%;
+    border-radius: 13px; padding: 9px 13px; max-width: 90%; cursor: pointer;
 }
+.chatmsg .bubble:hover { filter: brightness(0.96); }
 .chatmsg.user .bubble { background: linear-gradient(135deg, var(--accent-lt), var(--accent)); color: #fff; box-shadow: var(--clay-sm); }
 .chatmsg.assistant .bubble { background: var(--card); color: var(--text); border: 1.5px solid rgba(255,255,255,.6); box-shadow: var(--clay-sm); }
 @media (max-width: 700px) { .chatmsg .bubble { max-width: 96%; } }
@@ -1779,10 +1780,20 @@ function renderChat(msgs, scrollToEnd) {
     body.innerHTML = msgs.length
         ? msgs.map((m) => `<div class="chatmsg ${m.role === 'user' ? 'user' : 'assistant'}">
             <span class="who">${m.role === 'user' ? 'you' : 'claude'}</span>
-            <div class="bubble">${esc(m.text)}</div></div>`).join('')
+            <div class="bubble" title="click to copy" onclick="copyBubble(event, this)">${esc(m.text)}</div></div>`).join('')
         : '<p class="meta">no chat messages yet</p>';
     document.getElementById('chatLive').textContent = msgs.length ? `${msgs.length} message${msgs.length === 1 ? '' : 's'}` : '';
     if (scrollToEnd || atBottom) body.scrollTop = body.scrollHeight;
+}
+
+// Click a chat bubble to copy its text. textContent gives back the original
+// (esc() entities decode on render), so no separate copy of the raw text is
+// needed. Skip when the user is selecting text so drag-to-select still works.
+function copyBubble(e, el) {
+    if (String(window.getSelection() || '').length) return;
+    const text = el.textContent;
+    if (!navigator.clipboard) { toast('❌ clipboard unavailable'); return; }
+    navigator.clipboard.writeText(text).then(() => toast('📋 copied'), () => toast('❌ copy failed'));
 }
 
 document.getElementById('chatSend').onclick = () => { if (chatSession) openSend(chatSession, false); };

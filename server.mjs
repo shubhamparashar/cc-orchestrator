@@ -625,11 +625,12 @@ const handler = async (req, res) => {
             return sendJson(res, 200, { dismissed: dismissJob(Number(id)) });
         }
         if (req.method === 'POST' && url.pathname === '/api/attach') {
-            const { sessionId, cwd, fork } = await readBody(req);
+            const { sessionId, cwd, fork, skipPermissions } = await readBody(req);
             if (!sessionId) return sendJson(res, 400, { error: 'sessionId required' });
             if (!isSessionUuid(sessionId)) return sendJson(res, 400, { error: 'invalid session id' });
-            const result = await attachInTerminal({ sessionId, cwd, fork: Boolean(fork) });
-            result.command = attachCommand({ sessionId, cwd, fork: Boolean(fork) });
+            const opts = { sessionId, cwd, fork: Boolean(fork), skipPermissions: Boolean(skipPermissions) };
+            const result = await attachInTerminal(opts);
+            result.command = attachCommand(opts);
             return sendJson(res, 200, result);
         }
         sendJson(res, 404, { error: 'not found' });

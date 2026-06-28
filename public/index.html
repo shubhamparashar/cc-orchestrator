@@ -1035,6 +1035,7 @@ function cardHtml(s) {
             <button class="btn" onclick="openSend('${s.sessionId}', false)">${icn('ic-send')} Send prompt</button>
             <button class="btn ghost" onclick="openSend('${s.sessionId}', true)">${icn('ic-fork')} Fork…</button>
             ${IS_REMOTE ? '' : `<button class="btn ghost" onclick="attach('${s.sessionId}', null, true)" title="fork into a live interactive session in Terminal">${icn('ic-fork')} Fork ⇢ terminal</button>`}
+            ${IS_REMOTE ? '' : `<button class="btn ghost" onclick="attachAuto('${s.sessionId}')" title="fork into a live session that runs autonomously, skipping all permission prompts">${icn('ic-fork')} Fork ⇢ auto</button>`}
         </div>
     </div>`;
 }
@@ -1190,16 +1191,24 @@ async function loadDiag() {
 
 function findSession(id) { return state.sessions.find((s) => s.sessionId === id); }
 
-async function attach(id, cwd, fork = false) {
+async function attach(id, cwd, fork = false, skipPermissions = false) {
     const dir = cwd ?? findSession(id)?.cwd;
     try {
         const res = await fetch('/api/attach', { method: 'POST', headers: {'Content-Type':'application/json','X-CC':'1'},
-            body: JSON.stringify({ sessionId: id, cwd: dir, fork }), signal: AbortSignal.timeout(8000) });
+            body: JSON.stringify({ sessionId: id, cwd: dir, fork, skipPermissions }), signal: AbortSignal.timeout(8000) });
         const d = await res.json();
         if (!d.ok) { navigator.clipboard?.writeText(d.command); alert('Could not open Terminal (' + (d.error||'?') + ').\nCommand copied to clipboard:\n' + d.command); }
     } catch (err) {
         toast('❌ attach failed: ' + err.message);
     }
+}
+
+// Fork into a live session that runs with all permission prompts skipped. A
+// skip-permissions agent can edit files and run commands unattended, so gate it
+// behind an explicit confirmation rather than launching on a single click.
+function attachAuto(id) {
+    if (!confirm('Fork into an AUTO session?\n\nThis runs claude with --dangerously-skip-permissions: it will NOT ask before editing files, running commands, or other actions. Use only for a sandbox or a task you fully trust.')) return;
+    attach(id, null, true, true);
 }
 
 let sendTarget = null;

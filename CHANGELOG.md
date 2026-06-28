@@ -3,6 +3,20 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.8.1] — 2026-06-28
+
+### Fixed
+- **Sub-agents are now findable by a file they only touched in a tool call.** A
+  sub-agent's search body is a frequency-capped term bag, so a filename mentioned
+  just once (a lone `Read`/`Edit`) could be evicted from it — leaving the sub-agent
+  unsearchable by that file. Sub-agent docs now carry the same unconditionally-kept
+  `work` field session docs already have — file basenames, tool names, leading bash
+  command verbs, and spawned sub-agent types, harvested from the transcript's
+  `tool_use` blocks and scored at the ranker's existing `work` boost (no ranker
+  change). The harvest logic moved into a shared `lib/work.mjs` (depending only on the
+  leaf `lib/scan.mjs`) so the session index and the sub-agent index share it without
+  an import cycle.
+
 ## [1.8.0] — 2026-06-27
 
 ### Added

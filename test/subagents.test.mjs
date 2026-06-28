@@ -170,7 +170,7 @@ test('subagentDocsFor returns one navigable doc per transcript with the expected
     for (const d of docs) {
         assert.deepEqual(
             Object.keys(d).sort(),
-            ['agentType', 'body', 'description', 'id', 'model', 'parentSessionId', 'repo'],
+            ['agentType', 'body', 'description', 'id', 'model', 'parentSessionId', 'repo', 'work'],
         );
     }
 });
@@ -185,4 +185,20 @@ test('subagent doc body is a deduped term bag of real dialogue (no synthetic / h
     // The body is now a space-joined bag of lowercase significant tokens, not raw prose.
     assert.equal(task.body, task.body.toLowerCase(), 'body is tokenized (lowercased)');
     assert.ok(!/[A-Z]/.test(task.body), 'no uppercase prose survives tokenization');
+});
+
+test('subagent work field keeps a file named only in a tool call, even when body-evicted', async () => {
+    const docs = await subagentDocsFor(PROJECTS, PROJ, SESS, 'myrepo');
+    const explore = docs.find((d) => d.id === 'agent-explore01');
+    // explore01 Reads themeResolver.mjs in a tool_use but never names it in prose, so
+    // it cannot reach the dialogue body — only the work field keeps it searchable.
+    assert.ok(explore.work.split(' ').includes('themeresolver.mjs'), 'tool-touched file kept in work');
+    assert.ok(explore.work.split(' ').includes('read'), 'tool name kept in work');
+    assert.ok(!explore.body.includes('themeresolver'), 'the file is absent from the dialogue body');
+});
+
+test('a sub-agent with no tool calls has an empty work field (not undefined)', async () => {
+    const docs = await subagentDocsFor(PROJECTS, PROJ, SESS, 'myrepo');
+    const wf = docs.find((d) => d.id === 'agent-wf03');
+    assert.equal(wf.work, '', 'no tool_use → empty string, a valid index field');
 });

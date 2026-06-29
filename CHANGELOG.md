@@ -3,6 +3,28 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.12.0] — 2026-06-29
+
+### Added
+- **Persistent live sessions you start and watch from the dashboard (incl. your phone).**
+  A "Go live" button on each session card starts a persistent, interactive `claude` on the
+  server that keeps running even if your phone disconnects. Its output streams to a live
+  viewer over the existing event channel, and a strip at the top of the board lists every
+  running live session with Watch / Stop — so a reconnecting phone sees what's still alive
+  and can stop it.
+  - **Access levels** per session: Ask (`--permission-mode default`), Auto-edits
+    (`acceptEdits`), Plan (`plan`), or Full (`--dangerously-skip-permissions`). The level is
+    validated server-side against a fixed allowlist and mapped to a static flag — a client
+    string is never spliced into the spawned command.
+  - **Full sessions are guarded:** an explicit confirmation in the UI plus a server-side
+    audit log (id, level, cwd, pid, start/stop/exit) for every launch, because a single tap
+    can spawn an unrestricted, long-lived agent.
+  - The interactive PTY is allocated with the OS `script` command (no native dependency —
+    the project stays zero-dep). Output is shown as stripped text in this phase; a faithful
+    terminal renderer and the ability to type into the session land in follow-ups.
+  - Live sessions are tracked as detached process groups and torn down on stop and on server
+    shutdown/crash (SIGTERM grace then SIGKILL) so a restart never orphans an agent.
+
 ## [1.11.1] — 2026-06-28
 
 ### Fixed

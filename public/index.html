@@ -167,6 +167,27 @@ kbd {
 .btn.ghost { background: transparent; box-shadow: none; border-color: transparent; color: var(--muted); }
 .btn.ghost:hover { background: var(--surface); box-shadow: var(--clay-sm); border-color: rgba(255,255,255,.72); color: var(--dim); }
 .btn:disabled { opacity: .44; cursor: default; transform: none; box-shadow: var(--clay-sm); }
+.btn.danger { color: var(--red); border-color: rgba(224,85,85,.42); }
+.btn.danger:hover { background: rgba(224,85,85,.1); color: var(--red); }
+
+/* ── live sessions ───────────────────────────────────────── */
+.livestrip { display: flex; flex-direction: column; gap: 8px; margin: 0 0 14px; }
+.livestrip:empty { display: none; }
+.livecard {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: var(--card); border: 1.5px solid rgba(232,160,62,.3);
+    border-radius: var(--r-md); padding: 9px 13px; box-shadow: var(--clay-sm);
+}
+.livecard .lt { font-size: 12.5px; font-weight: 600; color: var(--dim); }
+.livecard .grow { flex: 1; min-width: 0; }
+.liveout {
+    background: #06080c; border: 1px solid var(--border); border-radius: 9px;
+    padding: 10px 12px; margin: 0; max-height: 52vh; overflow: auto;
+    font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre-wrap; word-break: break-word; color: #cbd5e1;
+}
+.lvlrow { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 14px; font-size: 12.5px; color: var(--muted); }
+.lvlrow select { width: 100%; box-sizing: border-box; }
 
 /* ── launcher matches ────────────────────────────────────── */
 #matches { display: grid; grid-template-columns: minmax(0,1fr); gap: 5px; margin: 8px 4px 0; }
@@ -683,6 +704,7 @@ label.chk { font-size: 12.5px; color: var(--muted); display: inline-flex; gap: 7
 
 <main>
     <div id="banner"></div>
+    <div class="livestrip" id="liveStrip"></div>
     <div class="gridhead"><h3>Sessions</h3><span class="meta" id="gridcount"></span></div>
     <div id="grid"><div class="empty">loading…</div></div>
 </main>
@@ -810,10 +832,41 @@ label.chk { font-size: 12.5px; color: var(--muted); display: inline-flex; gap: 7
     </div>
 </div></dialog>
 
+<dialog id="liveLaunchDialog"><div class="dlgpad">
+    <h3 id="liveLaunchTitle">Start live session</h3>
+    <p class="meta" style="margin:4px 0 10px">Starts a persistent <code>claude</code> on the server (keeps running if this device disconnects). Watch its output and stop it from here.</p>
+    <label class="lvlrow">Access level
+        <select id="liveLevel">
+            <option value="ask">Ask — prompt before each action</option>
+            <option value="acceptEdits">Auto-edits — accept file edits</option>
+            <option value="plan">Plan — read-only planning</option>
+            <option value="full">Full — skip ALL permission prompts ⚠</option>
+        </select>
+    </label>
+    <div class="dlgrow">
+        <span style="flex:1"></span>
+        <button class="btn" onclick="closeDlg('liveLaunchDialog')">Cancel</button>
+        <button class="btn primary" id="liveStartGo">
+            <svg class="icon" width="13" height="13"><use href="#ic-activity"/></svg> Start live
+        </button>
+    </div>
+</div></dialog>
+
+<dialog id="liveViewDialog"><div class="dlgpad">
+    <h3 id="liveViewTitle"><svg class="icon" width="16" height="16"><use href="#ic-activity"/></svg> Live session</h3>
+    <p class="meta" id="liveViewMeta" style="margin:4px 0 10px"></p>
+    <pre class="liveout" id="liveOut"></pre>
+    <div class="dlgrow">
+        <span class="meta" id="liveViewStatus" style="flex:1;min-width:0"></span>
+        <button class="btn danger" id="liveStopBtn">Stop</button>
+        <button class="btn" onclick="closeDlg('liveViewDialog')">Close</button>
+    </div>
+</div></dialog>
+
 <div class="jobs" id="jobs"></div>
 
 <script>
-const state = { sessions: [], jobs: {}, toasts: {}, matches: [] };
+const state = { sessions: [], jobs: {}, toasts: {}, matches: [], live: {} };
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
 // Loopback = the Mac itself (Terminal attach is useful). Anything else (phone via
@@ -1042,6 +1095,7 @@ function cardHtml(s) {
             ${IS_REMOTE ? '' : `<button class="btn" onclick="attach('${s.sessionId}')" title="opens Terminal on your Mac">${icn('ic-terminal')} Terminal</button>`}
             <button class="btn" onclick="openSend('${s.sessionId}', false)">${icn('ic-send')} Send prompt</button>
             <button class="btn ghost" onclick="openSend('${s.sessionId}', true)">${icn('ic-fork')} Fork…</button>
+            <button class="btn ghost" onclick="openLive('${s.sessionId}')" title="start a persistent live session on the server — watch it and stop it from here (works from your phone)">${icn('ic-activity')} Go live</button>
             ${IS_REMOTE ? '' : `<button class="btn ghost" onclick="attach('${s.sessionId}', null, true)" title="fork into a live interactive session in Terminal">${icn('ic-fork')} Fork ⇢ terminal</button>`}
             ${IS_REMOTE ? '' : `<button class="btn ghost" onclick="attachAuto('${s.sessionId}')" title="fork into a live session that runs autonomously, skipping all permission prompts">${icn('ic-fork')} Fork ⇢ auto</button>`}
         </div>
@@ -1736,6 +1790,119 @@ async function loadJobs() {
     }
 }
 
+/* ── persistent live sessions ──────────────────────────────── */
+// Cap the on-screen live transcript so a long-running session can't grow the DOM
+// node without bound; trim back to KEEP once the cap is hit.
+const LIVE_VIEW_MAX_CHARS = 200000;
+const LIVE_VIEW_KEEP_CHARS = 150000;
+const LEVEL_LABELS = { ask: 'Ask', acceptEdits: 'Auto-edits', plan: 'Plan', full: 'Full ⚠' };
+function levelLabel(l) { return Object.prototype.hasOwnProperty.call(LEVEL_LABELS, l) ? LEVEL_LABELS[l] : String(l || ''); }
+
+let liveTarget = null;   // session the launch dialog will start
+let liveViewId = null;   // session shown in the viewer (receives streamed output)
+
+function openLive(id) {
+    liveTarget = id;
+    const s = findSession(id);
+    document.getElementById('liveLaunchTitle').textContent = 'Start live — ' + (s?.title || id.slice(0, 8));
+    document.getElementById('liveLevel').value = 'ask';
+    withVT(() => document.getElementById('liveLaunchDialog').showModal());
+}
+
+document.getElementById('liveStartGo').onclick = async () => {
+    if (!liveTarget) return;
+    const level = document.getElementById('liveLevel').value;
+    // A Full session edits files / runs commands unattended and lives on until
+    // stopped — gate it behind an explicit confirm, like Fork ⇢ auto.
+    if (level === 'full' && !confirm('Start a FULL live session?\n\nIt runs claude with --dangerously-skip-permissions: NO prompts before editing files or running commands, and it keeps running on the server until you stop it. This launch is audit-logged.')) return;
+    const s = findSession(liveTarget);
+    const id = liveTarget;
+    closeDlg('liveLaunchDialog');
+    try {
+        const res = await fetch('/api/live/start', { method: 'POST', headers: {'Content-Type':'application/json','X-CC':'1'},
+            body: JSON.stringify({ sessionId: id, cwd: s?.cwd, level }), signal: AbortSignal.timeout(8000) });
+        const d = await res.json();
+        if (d.error) { toast('❌ live start failed: ' + d.error); return; }
+        openLiveView(id);
+        loadLive();
+    } catch (err) {
+        toast('❌ live start failed: ' + err.message);
+    }
+};
+
+function openLiveView(id) {
+    liveViewId = id;
+    const s = findSession(id);
+    const e = state.live[id];
+    document.getElementById('liveViewTitle').innerHTML = `${icn('ic-activity', 16)} Live — ${esc(s?.title || id.slice(0, 8))}`;
+    document.getElementById('liveViewMeta').textContent =
+        [e ? levelLabel(e.level) : '', s?.repo || '', id.slice(0, 8)].filter(Boolean).join(' · ');
+    // Scrollback replay is a later phase; this view tails output from now on.
+    document.getElementById('liveOut').textContent = '';
+    document.getElementById('liveViewStatus').textContent = e && e.status !== 'running' ? statusOfLive(e) : '● live';
+    if (!document.getElementById('liveViewDialog').open) withVT(() => document.getElementById('liveViewDialog').showModal());
+}
+
+function statusOfLive(e) {
+    if (!e) return '';
+    if (e.status === 'running') return '● live';
+    return `ended — ${e.status}${e.exitCode != null ? ' (' + e.exitCode + ')' : ''}`;
+}
+
+function appendLive(id, text) {
+    if (id !== liveViewId || !text) return;
+    const el = document.getElementById('liveOut');
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+    el.textContent += text;
+    if (el.textContent.length > LIVE_VIEW_MAX_CHARS) el.textContent = el.textContent.slice(-LIVE_VIEW_KEEP_CHARS);
+    if (atBottom) el.scrollTop = el.scrollHeight;
+}
+
+document.getElementById('liveStopBtn').onclick = () => { if (liveViewId) stopLive(liveViewId); };
+
+async function stopLive(id) {
+    try {
+        await fetch('/api/live/stop', { method: 'POST', headers: {'Content-Type':'application/json','X-CC':'1'},
+            body: JSON.stringify({ sessionId: id }), signal: AbortSignal.timeout(8000) });
+    } catch (err) {
+        toast('❌ stop failed: ' + err.message);
+    }
+    loadLive();
+}
+
+async function loadLive() {
+    try {
+        const res = await fetch('/api/live', { signal: AbortSignal.timeout(8000) });
+        const arr = await res.json();
+        if (!Array.isArray(arr)) return;
+        state.live = {};
+        for (const e of arr) state.live[e.sessionId] = e;
+        renderLive();
+        if (liveViewId && state.live[liveViewId]) {
+            document.getElementById('liveViewStatus').textContent = statusOfLive(state.live[liveViewId]);
+        }
+    } catch {
+        // best-effort: the strip just keeps its last state
+    }
+}
+
+function renderLive() {
+    const el = document.getElementById('liveStrip');
+    const running = Object.values(state.live).filter((e) => e.status === 'running');
+    el.innerHTML = running.map((e) => {
+        const s = findSession(e.sessionId);
+        return `
+        <div class="livecard">
+            <span class="dot running"></span>
+            <span class="lt">live · ${esc(s?.title || e.sessionId.slice(0, 8))}</span>
+            <span class="badge">${esc(levelLabel(e.level))}</span>
+            <span class="grow"></span>
+            <button class="btn" onclick="openLiveView('${e.sessionId}')">${icn('ic-activity', 12)} Watch</button>
+            <button class="btn danger" onclick="stopLive('${e.sessionId}')">Stop</button>
+        </div>`;
+    }).join('');
+}
+
 /* ── in-app chat viewer ────────────────────────────────────── */
 let chatSession = null;
 let chatTimer = null;
@@ -1847,6 +2014,19 @@ function connectEvents() {
         clearTimeout(chatRefetchTimer);
         chatRefetchTimer = setTimeout(() => loadChat(false), 600);
     });
+    es.addEventListener('live', (e) => {
+        let d; try { d = JSON.parse(e.data); } catch { return; }
+        if (d && d.sessionId) appendLive(d.sessionId, d.text || '');
+    });
+    es.addEventListener('live-exit', (e) => {
+        let d; try { d = JSON.parse(e.data); } catch { return; }
+        if (!d || !d.sessionId) return;
+        if (d.sessionId === liveViewId) {
+            document.getElementById('liveViewStatus').textContent =
+                `ended — ${d.status || 'exited'}${d.exitCode != null ? ' (' + d.exitCode + ')' : ''}`;
+        }
+        loadLive();
+    });
 }
 
 function disconnectEvents() {
@@ -1857,7 +2037,7 @@ function disconnectEvents() {
 
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) disconnectEvents();
-    else { connectEvents(); load(); loadJobs(); loadStatus(); }
+    else { connectEvents(); load(); loadJobs(); loadStatus(); loadLive(); }
 });
 
 // A tab opened in the background never fires visibilitychange until first
@@ -1870,7 +2050,9 @@ setInterval(() => { if (!document.hidden) loadStatus(); }, 120000);
 load();
 loadJobs();
 loadStatus();
+loadLive();
 loadDiag();
+setInterval(() => { if (!document.hidden) loadLive(); }, 15000);
 </script>
 </body>
 </html>

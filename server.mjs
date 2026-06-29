@@ -21,7 +21,7 @@ import { log } from './lib/logger.mjs';
 import { sanitizedEnv, issueUrl } from './lib/diag.mjs';
 import { costSummary, loadPricing } from './lib/pricing.mjs';
 import { sendPrompt, listJobs, stopJob, dismissJob, attachInTerminal, attachCommand, buildLaunchCommand, launchInTerminal } from './lib/actions.mjs';
-import { startLive, stopLive, stopAllLive, hardKillAllLive, listLive } from './lib/liveSessions.mjs';
+import { startLive, stopLive, stopAllLive, hardKillAllLive, listLive, isLiveCwd } from './lib/liveSessions.mjs';
 import { CONTEXTS_DIR, contextPathFor, isSessionUuid, listContextSessions, loadIndex, readContext } from './lib/contextStore.mjs';
 import { buildSessionIndex } from './lib/sessionIndex.mjs';
 import { rankDocs } from './lib/rank.mjs';
@@ -638,27 +638,38 @@ const handler = async (req, res) => {
             return sendJson(res, 200, listLive());
         }
         if (req.method === 'POST' && url.pathname === '/api/live/start') {
-            const { sessionId, cwd, level } = await readBody(req);
-            if (!sessionId || !isSessionUuid(sessionId)) return sendJson(res, 400, { error: 'invalid session id' });
+            const { sessionId, cwd, level, prompt } = await readBody(req);
             const lvl = typeof level === 'string' ? level : 'ask';
-            const onData = (id, text) => broadcast('live', { sessionId: id, text });
-            const onExit = (id, entry) => {
-                broadcast('live-exit', { sessionId: id, status: entry.status, exitCode: entry.exitCode });
+            // RESUME an existing session (sessionId given) or start a NEW one in a
+            // chosen directory. The cwd is validated server-side either way.
+            const resumeId = sessionId != null ? String(sessionId) : null;
+            if (resumeId !== null) {
+                if (!isSessionUuid(resumeId)) return sendJson(res, 400, { error: 'invalid session id' });
+                if (cwd != null && !isLiveCwd(cwd)) return sendJson(res, 400, { error: 'invalid cwd' });
+            } else if (!isLiveCwd(cwd)) {
+                return sendJson(res, 400, { error: 'cwd must be an existing absolute directory' });
+            }
+            const initialPrompt = typeof prompt === 'string' && prompt.trim() ? prompt : null;
+            const onData = (liveId, text) => broadcast('live', { liveId, text });
+            const onExit = (liveId, entry) => {
+                broadcast('live-exit', { liveId, status: entry.status, exitCode: entry.exitCode });
                 // Audit: a started agent's lifecycle must be traceable end-to-end.
-                log.info(`live ${entry.status} ${id}${entry.exitCode != null ? ` (exit ${entry.exitCode})` : ''}`);
+                log.info(`live ${entry.status} ${liveId}${entry.exitCode != null ? ` (exit ${entry.exitCode})` : ''}`);
             };
-            const result = startLive({ sessionId, cwd, level: lvl }, { onData, onExit });
+            const result = startLive({ sessionId: resumeId, cwd: cwd || undefined, level: lvl, prompt: initialPrompt }, { onData, onExit });
             if (result.error) return sendJson(res, 400, { error: result.error });
             // Audit: a phone tap can spawn an unrestricted, long-lived agent — log
-            // who/what/when so every Full (and any) launch is accountable.
-            log.info(`live START ${sessionId} level=${lvl} cwd=${cwd || '~'} pid=${result.pid}`);
+            // origin/level/cwd (never the prompt) so every Full (and any) launch is
+            // accountable.
+            const origin = resumeId ? `resume ${resumeId}` : 'new';
+            log.info(`live START ${result.liveId} ${origin} level=${lvl} cwd=${result.cwd} pid=${result.pid}`);
             return sendJson(res, 202, result);
         }
         if (req.method === 'POST' && url.pathname === '/api/live/stop') {
-            const { sessionId } = await readBody(req);
-            if (!sessionId || !isSessionUuid(sessionId)) return sendJson(res, 400, { error: 'invalid session id' });
-            const stopped = stopLive(sessionId);
-            if (stopped) log.info(`live STOP ${sessionId}`);
+            const { liveId } = await readBody(req);
+            if (!liveId || !isSessionUuid(liveId)) return sendJson(res, 400, { error: 'invalid live id' });
+            const stopped = stopLive(liveId);
+            if (stopped) log.info(`live STOP ${liveId}`);
             return sendJson(res, 200, { stopped });
         }
         sendJson(res, 404, { error: 'not found' });

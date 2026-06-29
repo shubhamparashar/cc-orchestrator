@@ -694,6 +694,10 @@ label.chk { font-size: 12.5px; color: var(--muted); display: inline-flex; gap: 7
             <span class="meta">No match?</span>
             <select id="launchRepo" class="input"></select>
             <span class="spacer"></span>
+            <button class="btn" id="launchLive" title="start a persistent live session in a repo or worktree — runs on the server, works from your phone">
+                <svg class="icon" width="13" height="13"><use href="#ic-activity"/></svg>
+                Go live
+            </button>
             <button class="btn primary" id="launchNew" disabled>
                 <svg class="icon" width="13" height="13"><use href="#ic-terminal"/></svg>
                 New chat in Terminal <span class="maconly">opens on your Mac</span>
@@ -847,6 +851,35 @@ label.chk { font-size: 12.5px; color: var(--muted); display: inline-flex; gap: 7
         <span style="flex:1"></span>
         <button class="btn" onclick="closeDlg('liveLaunchDialog')">Cancel</button>
         <button class="btn primary" id="liveStartGo">
+            <svg class="icon" width="13" height="13"><use href="#ic-activity"/></svg> Start live
+        </button>
+    </div>
+</div></dialog>
+
+<dialog id="newLiveDialog"><div class="dlgpad">
+    <h3><svg class="icon" width="16" height="16"><use href="#ic-activity"/></svg> Start a new live session</h3>
+    <p class="meta" style="margin:4px 0 10px">Starts a fresh persistent <code>claude</code> in the chosen directory (keeps running if this device disconnects). Watch its output and stop it from here.</p>
+    <label class="lvlrow">Repo / worktree
+        <select id="newLiveCwd"></select>
+    </label>
+    <label class="lvlrow">…or an absolute path
+        <input id="newLiveCwdPath" placeholder="/Users/you/repo/project" autocomplete="off" autocapitalize="off" spellcheck="false">
+    </label>
+    <label class="lvlrow">Access level
+        <select id="newLiveLevel">
+            <option value="ask">Ask — prompt before each action</option>
+            <option value="acceptEdits">Auto-edits — accept file edits</option>
+            <option value="plan">Plan — read-only planning</option>
+            <option value="full">Full — skip ALL permission prompts ⚠</option>
+        </select>
+    </label>
+    <label class="lvlrow">First prompt (optional)
+        <textarea id="newLivePrompt" placeholder="What should it work on?"></textarea>
+    </label>
+    <div class="dlgrow">
+        <span style="flex:1"></span>
+        <button class="btn" onclick="closeDlg('newLiveDialog')">Cancel</button>
+        <button class="btn primary" id="newLiveGo">
             <svg class="icon" width="13" height="13"><use href="#ic-activity"/></svg> Start live
         </button>
     </div>
@@ -1400,6 +1433,12 @@ document.getElementById('launchNew').onclick = () => {
     doLaunch({ prompt, cwd: document.getElementById('launchRepo').value }, 'new chat');
 };
 
+// Start a NEW persistent live session — prefill its first prompt from whatever is
+// typed in the launcher (runs on the server, so it works from the phone too).
+document.getElementById('launchLive').onclick = () => {
+    openNewLive(document.getElementById('launcherQ').value.trim());
+};
+
 function updateLaunchBtn() {
     document.getElementById('launchNew').disabled = !document.getElementById('launcherQ').value.trim();
 }
@@ -1798,9 +1837,20 @@ const LIVE_VIEW_KEEP_CHARS = 150000;
 const LEVEL_LABELS = { ask: 'Ask', acceptEdits: 'Auto-edits', plan: 'Plan', full: 'Full ⚠' };
 function levelLabel(l) { return Object.prototype.hasOwnProperty.call(LEVEL_LABELS, l) ? LEVEL_LABELS[l] : String(l || ''); }
 
-let liveTarget = null;   // session the launch dialog will start
-let liveViewId = null;   // session shown in the viewer (receives streamed output)
+const FULL_LIVE_CONFIRM = 'Start a FULL live session?\n\nIt runs claude with --dangerously-skip-permissions: NO prompts before editing files or running commands, and it keeps running on the server until you stop it. This launch is audit-logged.';
 
+let liveTarget = null;   // session being RESUMED by the resume launch dialog
+let liveViewId = null;   // liveId shown in the viewer (receives streamed output)
+
+// Label a live entry: a resumed session shows its title; a new one shows its repo.
+function repoFromCwd(cwd) { return cwd ? String(cwd).split('/').filter(Boolean).pop() : ''; }
+function liveLabel(e) {
+    if (!e) return '';
+    if (e.sessionId) return findSession(e.sessionId)?.title || e.sessionId.slice(0, 8);
+    return 'new · ' + (repoFromCwd(e.cwd) || 'session');
+}
+
+/* ── resume an existing session as a live session ──────────────────────────── */
 function openLive(id) {
     liveTarget = id;
     const s = findSession(id);
@@ -1812,31 +1862,69 @@ function openLive(id) {
 document.getElementById('liveStartGo').onclick = async () => {
     if (!liveTarget) return;
     const level = document.getElementById('liveLevel').value;
-    // A Full session edits files / runs commands unattended and lives on until
-    // stopped — gate it behind an explicit confirm, like Fork ⇢ auto.
-    if (level === 'full' && !confirm('Start a FULL live session?\n\nIt runs claude with --dangerously-skip-permissions: NO prompts before editing files or running commands, and it keeps running on the server until you stop it. This launch is audit-logged.')) return;
+    if (level === 'full' && !confirm(FULL_LIVE_CONFIRM)) return;
     const s = findSession(liveTarget);
-    const id = liveTarget;
+    const sessionId = liveTarget;
     closeDlg('liveLaunchDialog');
+    await startLiveSession({ sessionId, cwd: s?.cwd, level });
+};
+
+/* ── start a NEW live session in any repo or worktree ──────────────────────── */
+function openNewLive(prefillPrompt) {
+    populateNewLiveCwds();
+    document.getElementById('newLiveCwdPath').value = '';
+    document.getElementById('newLiveLevel').value = 'ask';
+    document.getElementById('newLivePrompt').value = prefillPrompt || '';
+    withVT(() => document.getElementById('newLiveDialog').showModal());
+}
+
+// Offer the working directories the dashboard already knows (distinct session
+// cwds, with a worktree tag); an absolute path can also be typed to override.
+function populateNewLiveCwds() {
+    const sel = document.getElementById('newLiveCwd');
+    const seen = new Map();
+    for (const s of state.sessions) {
+        if (s.cwd && !seen.has(s.cwd)) seen.set(s.cwd, { repo: s.repo, wt: s.isWorktree });
+    }
+    sel.innerHTML = [...seen]
+        .map(([cwd, m]) => `<option value="${esc(cwd)}">${esc(m.repo || cwd)}${m.wt ? ' · worktree' : ''}</option>`)
+        .join('') || '<option value="">(no known repos — type a path below)</option>';
+}
+
+document.getElementById('newLiveGo').onclick = async () => {
+    const typed = document.getElementById('newLiveCwdPath').value.trim();
+    const cwd = typed || document.getElementById('newLiveCwd').value;
+    if (!cwd) { toast('❌ pick a repo or enter an absolute path'); return; }
+    const level = document.getElementById('newLiveLevel').value;
+    if (level === 'full' && !confirm(FULL_LIVE_CONFIRM)) return;
+    const prompt = document.getElementById('newLivePrompt').value.trim() || undefined;
+    closeDlg('newLiveDialog');
+    await startLiveSession({ cwd, level, prompt });
+};
+
+// Shared start path for both resume and new. The server returns the full entry
+// (incl. the generated liveId); seed it into state so the viewer titles correctly
+// before the next /api/live poll lands.
+async function startLiveSession(body) {
     try {
         const res = await fetch('/api/live/start', { method: 'POST', headers: {'Content-Type':'application/json','X-CC':'1'},
-            body: JSON.stringify({ sessionId: id, cwd: s?.cwd, level }), signal: AbortSignal.timeout(8000) });
+            body: JSON.stringify(body), signal: AbortSignal.timeout(8000) });
         const d = await res.json();
-        if (d.error) { toast('❌ live start failed: ' + d.error); return; }
-        openLiveView(id);
+        if (d.error || !d.liveId) { toast('❌ live start failed: ' + (d.error || 'no id')); return; }
+        state.live[d.liveId] = d;
+        openLiveView(d.liveId);
         loadLive();
     } catch (err) {
         toast('❌ live start failed: ' + err.message);
     }
-};
+}
 
-function openLiveView(id) {
-    liveViewId = id;
-    const s = findSession(id);
-    const e = state.live[id];
-    document.getElementById('liveViewTitle').innerHTML = `${icn('ic-activity', 16)} Live — ${esc(s?.title || id.slice(0, 8))}`;
+function openLiveView(liveId) {
+    liveViewId = liveId;
+    const e = state.live[liveId];
+    document.getElementById('liveViewTitle').innerHTML = `${icn('ic-activity', 16)} Live — ${esc(e ? liveLabel(e) : liveId.slice(0, 8))}`;
     document.getElementById('liveViewMeta').textContent =
-        [e ? levelLabel(e.level) : '', s?.repo || '', id.slice(0, 8)].filter(Boolean).join(' · ');
+        [e ? levelLabel(e.level) : '', e?.cwd || '', liveId.slice(0, 8)].filter(Boolean).join(' · ');
     // Scrollback replay is a later phase; this view tails output from now on.
     document.getElementById('liveOut').textContent = '';
     document.getElementById('liveViewStatus').textContent = e && e.status !== 'running' ? statusOfLive(e) : '● live';
@@ -1849,8 +1937,8 @@ function statusOfLive(e) {
     return `ended — ${e.status}${e.exitCode != null ? ' (' + e.exitCode + ')' : ''}`;
 }
 
-function appendLive(id, text) {
-    if (id !== liveViewId || !text) return;
+function appendLive(liveId, text) {
+    if (liveId !== liveViewId || !text) return;
     const el = document.getElementById('liveOut');
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
     el.textContent += text;
@@ -1860,10 +1948,10 @@ function appendLive(id, text) {
 
 document.getElementById('liveStopBtn').onclick = () => { if (liveViewId) stopLive(liveViewId); };
 
-async function stopLive(id) {
+async function stopLive(liveId) {
     try {
         await fetch('/api/live/stop', { method: 'POST', headers: {'Content-Type':'application/json','X-CC':'1'},
-            body: JSON.stringify({ sessionId: id }), signal: AbortSignal.timeout(8000) });
+            body: JSON.stringify({ liveId }), signal: AbortSignal.timeout(8000) });
     } catch (err) {
         toast('❌ stop failed: ' + err.message);
     }
@@ -1876,7 +1964,7 @@ async function loadLive() {
         const arr = await res.json();
         if (!Array.isArray(arr)) return;
         state.live = {};
-        for (const e of arr) state.live[e.sessionId] = e;
+        for (const e of arr) state.live[e.liveId] = e;
         renderLive();
         if (liveViewId && state.live[liveViewId]) {
             document.getElementById('liveViewStatus').textContent = statusOfLive(state.live[liveViewId]);
@@ -1889,18 +1977,15 @@ async function loadLive() {
 function renderLive() {
     const el = document.getElementById('liveStrip');
     const running = Object.values(state.live).filter((e) => e.status === 'running');
-    el.innerHTML = running.map((e) => {
-        const s = findSession(e.sessionId);
-        return `
+    el.innerHTML = running.map((e) => `
         <div class="livecard">
             <span class="dot running"></span>
-            <span class="lt">live · ${esc(s?.title || e.sessionId.slice(0, 8))}</span>
+            <span class="lt">live · ${esc(liveLabel(e))}</span>
             <span class="badge">${esc(levelLabel(e.level))}</span>
             <span class="grow"></span>
-            <button class="btn" onclick="openLiveView('${e.sessionId}')">${icn('ic-activity', 12)} Watch</button>
-            <button class="btn danger" onclick="stopLive('${e.sessionId}')">Stop</button>
-        </div>`;
-    }).join('');
+            <button class="btn" onclick="openLiveView('${e.liveId}')">${icn('ic-activity', 12)} Watch</button>
+            <button class="btn danger" onclick="stopLive('${e.liveId}')">Stop</button>
+        </div>`).join('');
 }
 
 /* ── in-app chat viewer ────────────────────────────────────── */
@@ -2016,12 +2101,12 @@ function connectEvents() {
     });
     es.addEventListener('live', (e) => {
         let d; try { d = JSON.parse(e.data); } catch { return; }
-        if (d && d.sessionId) appendLive(d.sessionId, d.text || '');
+        if (d && d.liveId) appendLive(d.liveId, d.text || '');
     });
     es.addEventListener('live-exit', (e) => {
         let d; try { d = JSON.parse(e.data); } catch { return; }
-        if (!d || !d.sessionId) return;
-        if (d.sessionId === liveViewId) {
+        if (!d || !d.liveId) return;
+        if (d.liveId === liveViewId) {
             document.getElementById('liveViewStatus').textContent =
                 `ended — ${d.status || 'exited'}${d.exitCode != null ? ' (' + d.exitCode + ')' : ''}`;
         }

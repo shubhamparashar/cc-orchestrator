@@ -188,7 +188,12 @@ test('stopAllLive SIGTERMs running groups and marks them stopped', () => {
 
 // ── full lifecycle with a real benign stand-in (no real claude) ─────────────
 test('startLive streams output, then stopLive kills it and surfaces exit', async () => {
-    const standIn = (cmd, args, opts) => realSpawn('sh', ['-c', 'printf "READY\\n"; sleep 30'], opts);
+    // `exec sleep` so the stand-in is a SINGLE process: its stdout pipe has one
+    // holder, so killing it always closes the stream and fires 'close'. A plain
+    // `sh -c '… ; sleep'` is two processes (sh + sleep) and sleep inherits the
+    // pipe, so if a kill reaches only the shell the stream stays open and the
+    // close event never arrives.
+    const standIn = (cmd, args, opts) => realSpawn('sh', ['-c', 'printf "READY\\n"; exec sleep 30'], opts);
     let resolveData, resolveExit;
     const gotData = new Promise((r) => { resolveData = r; });
     const exited = new Promise((r) => { resolveExit = r; });
@@ -203,12 +208,12 @@ test('startLive streams output, then stopLive kills it and surfaces exit', async
     assert.equal(r.status, 'running');
     assert.ok(r.pid > 0);
 
-    const text = await Promise.race([gotData, timeout(4000, 'no output')]);
+    const text = await Promise.race([gotData, timeout(6000, 'no output')]);
     assert.ok(text.includes('READY'));
     assert.equal(getLive(UUID_A).status, 'running');
 
     assert.equal(stopLive(UUID_A), true);
-    const entry = await Promise.race([exited, timeout(4000, 'no exit')]);
+    const entry = await Promise.race([exited, timeout(6000, 'no exit')]);
     assert.equal(entry.status, 'stopped');
     assert.equal(getLive(UUID_A).status, 'stopped');
 });

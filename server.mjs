@@ -20,7 +20,7 @@ import { startLiveRefresh } from './lib/watch.mjs';
 import { log } from './lib/logger.mjs';
 import { sanitizedEnv, issueUrl } from './lib/diag.mjs';
 import { costSummary, loadPricing } from './lib/pricing.mjs';
-import { sendPrompt, listJobs, stopJob, dismissJob, attachInTerminal, attachCommand, buildLaunchCommand, launchInTerminal } from './lib/actions.mjs';
+import { sendPrompt, listJobs, stopJob, dismissJob, attachInTerminal, attachCommand, buildLaunchCommand, launchInTerminal, contextualPrompt } from './lib/actions.mjs';
 import { startLive, stopLive, stopAllLive, hardKillAllLive, listLive, isLiveCwd } from './lib/liveSessions.mjs';
 import { CONTEXTS_DIR, contextPathFor, isSessionUuid, listContextSessions, loadIndex, readContext } from './lib/contextStore.mjs';
 import { buildSessionIndex } from './lib/sessionIndex.mjs';
@@ -638,7 +638,7 @@ const handler = async (req, res) => {
             return sendJson(res, 200, listLive());
         }
         if (req.method === 'POST' && url.pathname === '/api/live/start') {
-            const { sessionId, cwd, level, prompt } = await readBody(req);
+            const { sessionId, cwd, level, prompt, contextSessionId } = await readBody(req);
             const lvl = typeof level === 'string' ? level : 'ask';
             // RESUME an existing session (sessionId given) or start a NEW one in a
             // chosen directory. The cwd is validated server-side either way.
@@ -649,7 +649,20 @@ const handler = async (req, res) => {
             } else if (!isLiveCwd(cwd)) {
                 return sendJson(res, 400, { error: 'cwd must be an existing absolute directory' });
             }
-            const initialPrompt = typeof prompt === 'string' && prompt.trim() ? prompt : null;
+            let initialPrompt = typeof prompt === 'string' && prompt.trim() ? prompt : null;
+            // Closest-context injection: for a NEW session with a prompt, prime it to
+            // read a related session's context file first. The path is resolved
+            // server-side from the chosen session id (never a client path), so an
+            // arbitrary file can't be injected.
+            let primedFrom = null;
+            if (resumeId === null && initialPrompt && contextSessionId != null) {
+                if (!isSessionUuid(String(contextSessionId))) return sendJson(res, 400, { error: 'invalid context session id' });
+                const ctx = await readContext(String(contextSessionId));
+                if (ctx?.path) {
+                    initialPrompt = contextualPrompt(initialPrompt, ctx.path);
+                    primedFrom = String(contextSessionId);
+                }
+            }
             const onData = (liveId, text) => broadcast('live', { liveId, text });
             const onExit = (liveId, entry) => {
                 broadcast('live-exit', { liveId, status: entry.status, exitCode: entry.exitCode });
@@ -659,10 +672,10 @@ const handler = async (req, res) => {
             const result = startLive({ sessionId: resumeId, cwd: cwd || undefined, level: lvl, prompt: initialPrompt }, { onData, onExit });
             if (result.error) return sendJson(res, 400, { error: result.error });
             // Audit: a phone tap can spawn an unrestricted, long-lived agent — log
-            // origin/level/cwd (never the prompt) so every Full (and any) launch is
+            // origin/level/cwd/primed-from (never the prompt) so every launch is
             // accountable.
             const origin = resumeId ? `resume ${resumeId}` : 'new';
-            log.info(`live START ${result.liveId} ${origin} level=${lvl} cwd=${result.cwd} pid=${result.pid}`);
+            log.info(`live START ${result.liveId} ${origin} level=${lvl} cwd=${result.cwd}${primedFrom ? ` primed=${primedFrom}` : ''} pid=${result.pid}`);
             return sendJson(res, 202, result);
         }
         if (req.method === 'POST' && url.pathname === '/api/live/stop') {

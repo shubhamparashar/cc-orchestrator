@@ -3,6 +3,20 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.14.0] — 2026-06-29
+
+### Added
+- **Closest-context injection for new live sessions.** When you start a new live session with a
+  first prompt, the new-session dialog now finds the sessions closest to that task (reusing the
+  existing relatedness ranker) and offers to prime the fresh session with one's saved context —
+  so it starts oriented instead of cold. The chosen source is always shown in a "Prior context"
+  selector and is fully overridable: it defaults to the nearest match that has a saved context
+  file, "Start clean" is always one click away, and a match without a saved context offers to
+  continue (resume) that session instead. Nothing is injected silently.
+  - The context is resolved **server-side** from the chosen session id (never a client-supplied
+    path), so only a real saved context file for an existing session can be injected. The
+    selected session id is audit-logged (`primed=<id>`); the prompt itself is never logged.
+
 ## [1.13.0] — 2026-06-29
 
 ### Added

@@ -3,6 +3,26 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.13.0] — 2026-06-29
+
+### Added
+- **Start a NEW live session in any repo or worktree.** Previously "Go live" could only
+  resume an existing session. A **Go live** button in the launcher now opens a dialog to start
+  a fresh persistent `claude` in a chosen directory — pick from the repos/worktrees the
+  dashboard already knows (worktrees are tagged) or type an absolute path, choose an access
+  level, and optionally give it a first prompt (prefilled from whatever you typed in the
+  launcher). Like every live session it runs on the server and is watchable/stoppable from the
+  phone.
+  - The working directory is validated server-side (absolute, no `..` traversal, must be an
+    existing directory) and passed as the process working directory, never as a shell token.
+    The optional first prompt is passed as a discrete argument on macOS and shell-escaped on
+    Linux, so it can't break out of the command.
+  - Live sessions are now tracked by a server-generated `liveId` (a new session has no claude
+    session id until claude creates one), so the resume and new-session paths share one
+    registry, viewer, and stop/stream path.
+  - Audit log records each launch's origin (resume vs new), level, cwd, and pid — never the
+    prompt.
+
 ## [1.12.0] — 2026-06-29
 
 ### Added

@@ -876,6 +876,10 @@ label.chk { font-size: 12.5px; color: var(--muted); display: inline-flex; gap: 7
     <label class="lvlrow">First prompt (optional)
         <textarea id="newLivePrompt" placeholder="What should it work on?"></textarea>
     </label>
+    <label class="lvlrow">Prior context
+        <select id="newLiveContext"><option value="">Start clean (no prior context)</option></select>
+        <span class="meta" id="newLiveContextHint" style="font-size:11px"></span>
+    </label>
     <div class="dlgrow">
         <span style="flex:1"></span>
         <button class="btn" onclick="closeDlg('newLiveDialog')">Cancel</button>
@@ -1870,11 +1874,17 @@ document.getElementById('liveStartGo').onclick = async () => {
 };
 
 /* ── start a NEW live session in any repo or worktree ──────────────────────── */
+let newLiveMatches = [];   // related sessions for the typed prompt (context sources)
+let newLiveCtxTimer = null;
+
 function openNewLive(prefillPrompt) {
     populateNewLiveCwds();
     document.getElementById('newLiveCwdPath').value = '';
     document.getElementById('newLiveLevel').value = 'ask';
     document.getElementById('newLivePrompt').value = prefillPrompt || '';
+    newLiveMatches = [];
+    renderNewLiveContext();
+    fetchNewLiveContext(prefillPrompt || '');
     withVT(() => document.getElementById('newLiveDialog').showModal());
 }
 
@@ -1891,6 +1901,56 @@ function populateNewLiveCwds() {
         .join('') || '<option value="">(no known repos — type a path below)</option>';
 }
 
+// Find the sessions closest to the typed task so a new session can start oriented
+// instead of cold. Reuses the existing relatedness ranker (/api/related); the
+// chosen source is always shown and overridable (never injected silently).
+async function fetchNewLiveContext(q) {
+    if (!q || !q.trim()) { newLiveMatches = []; renderNewLiveContext(); return; }
+    try {
+        const res = await fetch('/api/related?q=' + encodeURIComponent(q), { signal: AbortSignal.timeout(5000) });
+        const data = await res.json();
+        if (!Array.isArray(data)) { newLiveMatches = []; renderNewLiveContext(); return; }
+        // Only whole sessions can seed a new session (a sub-agent can't be resumed
+        // and has no standalone context file).
+        newLiveMatches = data.filter((m) => m.kind !== 'subagent').slice(0, 5);
+        renderNewLiveContext();
+    } catch {
+        // best-effort: the selector just stays on "Start clean"
+    }
+}
+
+function renderNewLiveContext() {
+    const sel = document.getElementById('newLiveContext');
+    const opts = ['<option value="">Start clean (no prior context)</option>'];
+    newLiveMatches.forEach((m, i) => {
+        const verb = m.contextPath ? '◎ prime from' : '↻ continue';
+        opts.push(`<option value="${i}">${verb}: ${esc(m.title || m.sessionId.slice(0, 8))}${m.repo ? ' · ' + esc(m.repo) : ''}</option>`);
+    });
+    sel.innerHTML = opts.join('');
+    // Default to the closest match that has a saved context file (prime). Don't
+    // auto-pick a "continue" match — that would drop the task the user just typed.
+    const firstPrime = newLiveMatches.findIndex((m) => m.contextPath);
+    sel.value = firstPrime >= 0 ? String(firstPrime) : '';
+    updateNewLiveContextHint();
+}
+
+function updateNewLiveContextHint() {
+    const sel = document.getElementById('newLiveContext');
+    const hint = document.getElementById('newLiveContextHint');
+    const m = sel.value === '' ? null : newLiveMatches[Number(sel.value)];
+    if (!m) { hint.textContent = ''; return; }
+    hint.textContent = m.contextPath
+        ? 'reads that session’s saved context, then your prompt'
+        : 'resumes that session instead of starting new (your prompt above is not sent)';
+}
+
+document.getElementById('newLiveContext').addEventListener('change', updateNewLiveContextHint);
+document.getElementById('newLivePrompt').addEventListener('input', (e) => {
+    clearTimeout(newLiveCtxTimer);
+    const q = e.target.value;
+    newLiveCtxTimer = setTimeout(() => fetchNewLiveContext(q), 350);
+});
+
 document.getElementById('newLiveGo').onclick = async () => {
     const typed = document.getElementById('newLiveCwdPath').value.trim();
     const cwd = typed || document.getElementById('newLiveCwd').value;
@@ -1898,8 +1958,17 @@ document.getElementById('newLiveGo').onclick = async () => {
     const level = document.getElementById('newLiveLevel').value;
     if (level === 'full' && !confirm(FULL_LIVE_CONFIRM)) return;
     const prompt = document.getElementById('newLivePrompt').value.trim() || undefined;
+    const ctxSel = document.getElementById('newLiveContext').value;
+    const match = ctxSel === '' ? null : newLiveMatches[Number(ctxSel)];
     closeDlg('newLiveDialog');
-    await startLiveSession({ cwd, level, prompt });
+    if (match && !match.contextPath) {
+        // No saved context to prime with → continue (resume) the closest session.
+        await startLiveSession({ sessionId: match.sessionId, cwd: match.cwd || cwd, level });
+    } else {
+        const body = { cwd, level, prompt };
+        if (match) body.contextSessionId = match.sessionId;   // prime from its context file
+        await startLiveSession(body);
+    }
 };
 
 // Shared start path for both resume and new. The server returns the full entry

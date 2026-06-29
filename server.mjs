@@ -21,6 +21,7 @@ import { log } from './lib/logger.mjs';
 import { sanitizedEnv, issueUrl } from './lib/diag.mjs';
 import { costSummary, loadPricing } from './lib/pricing.mjs';
 import { sendPrompt, listJobs, stopJob, dismissJob, attachInTerminal, attachCommand, buildLaunchCommand, launchInTerminal } from './lib/actions.mjs';
+import { startLive, stopLive, stopAllLive, hardKillAllLive, listLive } from './lib/liveSessions.mjs';
 import { CONTEXTS_DIR, contextPathFor, isSessionUuid, listContextSessions, loadIndex, readContext } from './lib/contextStore.mjs';
 import { buildSessionIndex } from './lib/sessionIndex.mjs';
 import { rankDocs } from './lib/rank.mjs';
@@ -633,6 +634,33 @@ const handler = async (req, res) => {
             result.command = attachCommand(opts);
             return sendJson(res, 200, result);
         }
+        if (req.method === 'GET' && url.pathname === '/api/live') {
+            return sendJson(res, 200, listLive());
+        }
+        if (req.method === 'POST' && url.pathname === '/api/live/start') {
+            const { sessionId, cwd, level } = await readBody(req);
+            if (!sessionId || !isSessionUuid(sessionId)) return sendJson(res, 400, { error: 'invalid session id' });
+            const lvl = typeof level === 'string' ? level : 'ask';
+            const onData = (id, text) => broadcast('live', { sessionId: id, text });
+            const onExit = (id, entry) => {
+                broadcast('live-exit', { sessionId: id, status: entry.status, exitCode: entry.exitCode });
+                // Audit: a started agent's lifecycle must be traceable end-to-end.
+                log.info(`live ${entry.status} ${id}${entry.exitCode != null ? ` (exit ${entry.exitCode})` : ''}`);
+            };
+            const result = startLive({ sessionId, cwd, level: lvl }, { onData, onExit });
+            if (result.error) return sendJson(res, 400, { error: result.error });
+            // Audit: a phone tap can spawn an unrestricted, long-lived agent — log
+            // who/what/when so every Full (and any) launch is accountable.
+            log.info(`live START ${sessionId} level=${lvl} cwd=${cwd || '~'} pid=${result.pid}`);
+            return sendJson(res, 202, result);
+        }
+        if (req.method === 'POST' && url.pathname === '/api/live/stop') {
+            const { sessionId } = await readBody(req);
+            if (!sessionId || !isSessionUuid(sessionId)) return sendJson(res, 400, { error: 'invalid session id' });
+            const stopped = stopLive(sessionId);
+            if (stopped) log.info(`live STOP ${sessionId}`);
+            return sendJson(res, 200, { stopped });
+        }
         sendJson(res, 404, { error: 'not found' });
     } catch (err) {
         const code = err.statusCode || 500;
@@ -655,8 +683,28 @@ process.on('unhandledRejection', (reason) => {
 });
 process.on('uncaughtException', (err) => {
     log.error(`uncaughtException: ${err?.stack || err}`);
+    // Crashing — SIGKILL the detached live groups outright so none are orphaned
+    // (SIGKILL is delivered by the kernel regardless of our immediate exit).
+    stopAllLive();
+    hardKillAllLive();
     process.exit(1); // preserve crash semantics — log, then exit
 });
+
+// A LaunchAgent restart (launchctl kickstart -k) sends SIGTERM; persistent live
+// sessions are detached process groups that would otherwise survive the server.
+// SIGTERM them, give that a beat to land, then SIGKILL any stragglers before
+// exiting — exiting in the same tick would let a slow-to-die agent be orphaned.
+for (const sig of ['SIGTERM', 'SIGINT']) {
+    process.on(sig, () => {
+        log.info(`${sig} — stopping live sessions and exiting`);
+        stopAllLive();
+        setTimeout(() => {
+            const forced = hardKillAllLive();
+            if (forced) log.warn(`hard-killed ${forced} live session group(s) on ${sig}`);
+            process.exit(0);
+        }, 250).unref();
+    });
+}
 
 const server = createServer(handler);
 server.on('error', (err) => {

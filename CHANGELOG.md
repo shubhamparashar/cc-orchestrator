@@ -3,6 +3,33 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.15.0] — 2026-07-02
+
+### Added
+- **Modern design system for the whole dashboard.** A ground-up visual refresh of
+  `public/index.html`, still one file, zero dependencies, no build step.
+  - **Design tokens** — flat elevation (`--elev-*`), hairline borders (`--line`), a spacing scale,
+    a type scale, and `color-mix`-derived badges/chips replace the old clay shadows and ~40
+    hardcoded colors, so the entire app themes centrally.
+  - **Dark theme by default** (follows the OS, leaning dark), with a header sun/moon toggle,
+    `localStorage` persistence, a pre-paint boot script (no flash), synced `theme-color` metas,
+    and a theme-native live-session terminal.
+  - **Refined cards** — a 3px status rail replaces the dot, a calm primary badge row with a
+    `+N` expander for detail badges, and a `⋯` action menu (remote gating preserved) replace the
+    7-button row; keyed per-card DOM reconciliation keeps selection, expansion, and open menus
+    stable across live refreshes.
+  - **Header ergonomics** — scroll-aware elevation, a segmented filter group, and a mobile tools
+    panel; sticky column headers now pin below the measured header instead of underneath it.
+  - **States & motion** — skeleton loading cards, designed empty states with one-tap
+    clear-filters, dialog enter/exit transitions and pinned dialog chrome with scrollable bodies,
+    a streaming caret on the live terminal — all fully disabled under `prefers-reduced-motion`.
+  - **Accessibility & mobile** — WCAG AA contrast in both themes, visible `:focus-visible`
+    outlines, ≥44px touch targets, 16px inputs (no iOS focus-zoom), notch-safe header padding,
+    and a grab-handle on bottom-sheet dialogs.
+  - Fixes for the previously broken bits: the ⌘K chip style collision, an undefined
+    `var(--border)`, off-palette hover/badge colors, and the board empty state sitting in the
+    first grid column.
+
 ## [1.14.1] — 2026-07-02
 
 ### Fixed

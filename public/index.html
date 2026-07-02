@@ -1188,7 +1188,12 @@ function render() {
 
     const repos = [...new Set(state.sessions.map((s) => s.repo))].sort();
     const repoSel = document.getElementById('repoFilter');
-    if (repoSel.options.length - 1 !== repos.length) {
+    // Compare content, not option count — a same-size repo-set change (one repo
+    // aging out as another appears) must still refresh the options. Never rebuild
+    // under the user's focus: replacing the nodes closes an open dropdown.
+    const repoKey = repos.join('');
+    if (repoSel.dataset.key !== repoKey && document.activeElement !== repoSel) {
+        repoSel.dataset.key = repoKey;
         repoSel.innerHTML = '<option value="">all repos</option>' + repos.map((r) => `<option ${r===rf?'selected':''}>${esc(r)}</option>`).join('');
     }
     populateLaunchRepos();
@@ -1222,7 +1227,13 @@ function render() {
     applySelection(); // re-apply the keyboard selection ring after the grid rebuilds
 }
 
+// Freshness counter: every applySessions bumps it, and a poll whose response
+// lands after a newer apply (e.g. an SSE broadcast mid-fetch) is discarded, so
+// a slow fetch can never regress the board to an older snapshot.
+let sessionsGen = 0;
+
 function applySessions(data) {
+    sessionsGen++;
     state.sessions = data;
     hideBanner();
     try {
@@ -1234,13 +1245,16 @@ function applySessions(data) {
 }
 
 async function load() {
+    const gen = sessionsGen;
     try {
         const res = await fetch('/api/sessions', { signal: AbortSignal.timeout(8000) });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         if (!Array.isArray(data)) throw new Error(data.error || 'unexpected response shape');
+        if (sessionsGen !== gen) return; // fresher data already painted the board
         applySessions(data);
     } catch (err) {
+        if (sessionsGen !== gen) return; // a fresher apply landed — don't raise a stale banner
         showBanner('⚠ ' + loadFailureHint(err));
         if (!state.sessions.length) {
             document.getElementById('grid').innerHTML = '<div class="empty">could not load sessions — see the message above</div>';
@@ -1296,7 +1310,15 @@ async function attach(id, cwd, fork = false, skipPermissions = false) {
         const res = await fetch('/api/attach', { method: 'POST', headers: {'Content-Type':'application/json','X-CC':'1'},
             body: JSON.stringify({ sessionId: id, cwd: dir, fork, skipPermissions }), signal: AbortSignal.timeout(8000) });
         const d = await res.json();
-        if (!d.ok) { navigator.clipboard?.writeText(d.command); alert('Could not open Terminal (' + (d.error||'?') + ').\nCommand copied to clipboard:\n' + d.command); }
+        if (!d.ok) {
+            // Only claim a copy that actually happened — navigator.clipboard is
+            // absent on insecure (LAN) origins and writeText can reject outside
+            // a user gesture; the command is in the alert body either way.
+            let copied = false;
+            try { await navigator.clipboard.writeText(d.command); copied = true; } catch { /* clipboard unavailable */ }
+            alert('Could not open Terminal (' + (d.error||'?') + ').\n'
+                + (copied ? 'Command copied to clipboard:\n' : 'Copy this command manually:\n') + d.command);
+        }
     } catch (err) {
         toast('❌ attach failed: ' + err.message);
     }
@@ -1313,6 +1335,10 @@ function attachAuto(id) {
 let sendTarget = null;
 
 function openSend(id, fork) {
+    // A cancelled draft belongs to the session it was typed for: keep it when
+    // reopening the same session, clear it when the target changes so one hasty
+    // Send can't route it to a different session.
+    if (sendTarget !== id) document.getElementById('sendText').value = '';
     sendTarget = id;
     const s = findSession(id);
     document.getElementById('sendTitle').textContent = (fork ? 'Fork + prompt — ' : 'Send prompt — ') + (s?.title || id);
@@ -1330,11 +1356,17 @@ document.getElementById('sendGo').onclick = async () => {
     if (!text || !sendTarget) return;
     const s = findSession(sendTarget);
     try {
-        await fetch('/api/send', { method: 'POST', headers: {'Content-Type':'application/json','X-CC':'1'},
+        const res = await fetch('/api/send', { method: 'POST', headers: {'Content-Type':'application/json','X-CC':'1'},
             body: JSON.stringify({ sessionId: sendTarget, cwd: s?.cwd, text, fork: document.getElementById('sendFork').checked }),
             signal: AbortSignal.timeout(8000) });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || 'HTTP ' + res.status);
     } catch (err) {
-        toast('❌ send failed: ' + err.message);
+        // Keep the dialog open and the typed prompt intact — clearing on a failed
+        // send would silently destroy unrecoverable input. The error surfaces
+        // inside the dialog: a toast alone would paint behind this modal's top layer.
+        document.getElementById('sendCaveat').textContent = '❌ send failed: ' + err.message;
+        return;
     }
     document.getElementById('sendText').value = '';
     document.getElementById('sendDialog').close();
@@ -1352,6 +1384,12 @@ function populateLaunchRepos() {
     for (const s of state.sessions) {
         if (s.cwd && !seen.has(s.cwd)) seen.set(s.cwd, s.repo);
     }
+    // Rebuilding the option nodes closes an open dropdown mid-pick and can
+    // silently move the selection — skip when nothing changed or while the
+    // user is in the control.
+    const key = [...seen].map(([cwd, repo]) => `${cwd} ${repo}`).join('');
+    if (key === sel.dataset.key || document.activeElement === sel) return;
+    sel.dataset.key = key;
     const current = sel.value;
     sel.innerHTML = [...seen].map(([cwd, repo]) => `<option value="${esc(cwd)}">${esc(repo)}</option>`).join('');
     if (current && [...seen.keys()].includes(current)) sel.value = current;
@@ -1398,13 +1436,18 @@ async function fetchMatches(q) {
         document.getElementById('matches').innerHTML = visibleMatches.map(matchHtml).join('');
         state.matches = data;
     } catch {
-        // launcher search is best-effort; the new-chat button still works
+        // launcher search is best-effort; the new-chat button still works —
+        // but forget the query so retyping it retries instead of being skipped
+        if (lastQuerySent === q) lastQuerySent = '';
     }
 }
 
 function clearMatches() {
     document.getElementById('matches').innerHTML = '';
     visibleMatches = []; matchIndex = -1;
+    // The list is empty now, so the same query must be allowed to re-search —
+    // otherwise clearing the box and retyping it leaves the list empty for good.
+    lastQuerySent = '';
 }
 
 function attachMatch(id) {
@@ -1425,10 +1468,16 @@ async function doLaunch(body, label) {
 }
 
 function launchWithContext(id) {
-    const prompt = document.getElementById('launcherQ').value.trim();
-    if (!prompt) return;
+    // The launcher box is the usual prompt source, but this button also renders
+    // in the context dialog's Related tab where that box is typically empty —
+    // ask for the task there instead of silently doing nothing.
+    let task = document.getElementById('launcherQ').value.trim();
+    if (!task) {
+        task = (window.prompt('Task for the new chat (it starts primed with that session’s context):') || '').trim();
+        if (!task) return;
+    }
     const m = (state.matches || []).find((x) => x.sessionId === id);
-    doLaunch({ prompt, sessionId: id, cwd: m?.cwd || findSession(id)?.cwd }, 'new chat with context');
+    doLaunch({ prompt: task, sessionId: id, cwd: m?.cwd || findSession(id)?.cwd }, 'new chat with context');
 }
 
 document.getElementById('launchNew').onclick = () => {
@@ -1465,8 +1514,14 @@ document.getElementById('launcherQ').addEventListener('keydown', (e) => {
     if (e.key === 'ArrowUp' && n) { e.preventDefault(); matchIndex = Math.max(matchIndex - 1, -1); highlightMatch(); return; }
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        if (matchIndex >= 0 && visibleMatches[matchIndex]) attachMatch(visibleMatches[matchIndex].sessionId);
-        else document.getElementById('launchNew').click();
+        if (matchIndex >= 0 && visibleMatches[matchIndex]) {
+            const id = visibleMatches[matchIndex].sessionId;
+            // Mirror the row's visible button: a remote viewer gets the in-app
+            // chat, never a Terminal window on the far-away Mac.
+            if (IS_REMOTE) openChat(id); else attachMatch(id);
+        } else {
+            document.getElementById('launchNew').click();
+        }
         return;
     }
     if (e.key === 'Escape') clearMatches();
@@ -1577,6 +1632,7 @@ async function openCtx(id) {
         const res = await fetch('/api/context/' + id, { signal: AbortSignal.timeout(5000) });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const d = await res.json();
+        if (ctxSession !== id) return; // the dialog moved on to another session mid-fetch
         const meta = d.meta || {};
         const chips = [meta.repo, ...(meta.tags || [])].filter(Boolean)
             .map((t) => `<span class="badge">${esc(t)}</span>`).join('');
@@ -1585,6 +1641,7 @@ async function openCtx(id) {
         document.getElementById('ctxBody').innerHTML = mdLite(d.content.replace(/^---[\s\S]*?---\n/, ''));
         document.getElementById('ctxPath').textContent = d.path;
     } catch (err) {
+        if (ctxSession !== id) return;
         document.getElementById('ctxBody').innerHTML = `<p class="meta">could not load context: ${esc(err.message)}</p>`;
     }
 }
@@ -1613,17 +1670,24 @@ document.querySelectorAll('#ctxDialog .tab').forEach((t) => {
     t.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); } };
 });
 
-document.getElementById('ctxCopy').onclick = () => {
-    navigator.clipboard?.writeText(`claude --resume ${ctxSession}`);
-    document.getElementById('ctxCopy').textContent = 'Copied!';
+// Truthful copy feedback: navigator.clipboard is absent on insecure (LAN)
+// origins and writeText can reject — claiming "Copied!" then would have the
+// user paste stale clipboard contents.
+async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
+}
+
+document.getElementById('ctxCopy').onclick = async () => {
+    const ok = await copyText(`claude --resume ${ctxSession}`);
+    document.getElementById('ctxCopy').textContent = ok ? 'Copied!' : 'Copy failed';
     setTimeout(() => { document.getElementById('ctxCopy').textContent = 'Copy --resume command'; }, 1200);
 };
 
 function wireCopy(btn, text, label) {
     if (!btn) return;
-    btn.onclick = () => {
-        navigator.clipboard?.writeText(text);
-        btn.textContent = 'Copied!';
+    btn.onclick = async () => {
+        const ok = await copyText(text);
+        btn.textContent = ok ? 'Copied!' : 'Copy failed';
         setTimeout(() => { btn.textContent = label; }, 1200);
     };
 }
@@ -1722,6 +1786,7 @@ async function loadHistory(q) {
     try {
         const res = await fetch(`/api/history?q=${encodeURIComponent(q)}&limit=300`, { signal: AbortSignal.timeout(8000) });
         const rows = await res.json();
+        if (document.getElementById('histQ').value !== q) return; // stale response for an older query
         document.getElementById('histMeta').textContent = `${rows.length} prompt${rows.length === 1 ? '' : 's'}`;
         if (!rows.length) { list.innerHTML = '<div class="meta" style="padding:18px 4px">no matching prompts</div>'; return; }
         list.innerHTML = rows.map((e) => {
@@ -1735,6 +1800,7 @@ async function loadHistory(q) {
             </div>`;
         }).join('');
     } catch (err) {
+        if (document.getElementById('histQ').value !== q) return;
         list.innerHTML = `<div class="meta" style="padding:18px 4px">could not load: ${esc(err.message)}</div>`;
     }
 }
@@ -1876,13 +1942,18 @@ document.getElementById('liveStartGo').onclick = async () => {
 /* ── start a NEW live session in any repo or worktree ──────────────────────── */
 let newLiveMatches = [];   // related sessions for the typed prompt (context sources)
 let newLiveCtxTimer = null;
+let newLiveCtxFor = null;  // the prompt the current matches correspond to
+let newLiveUserPick = null; // explicit selection: '' = Start clean, else a sessionId; null = auto
 
 function openNewLive(prefillPrompt) {
     populateNewLiveCwds();
     document.getElementById('newLiveCwdPath').value = '';
     document.getElementById('newLiveLevel').value = 'ask';
     document.getElementById('newLivePrompt').value = prefillPrompt || '';
+    clearTimeout(newLiveCtxTimer); // a timer armed in a previous dialog use must not fire into this one
     newLiveMatches = [];
+    newLiveCtxFor = null;
+    newLiveUserPick = null;
     renderNewLiveContext();
     fetchNewLiveContext(prefillPrompt || '');
     withVT(() => document.getElementById('newLiveDialog').showModal());
@@ -1905,10 +1976,14 @@ function populateNewLiveCwds() {
 // instead of cold. Reuses the existing relatedness ranker (/api/related); the
 // chosen source is always shown and overridable (never injected silently).
 async function fetchNewLiveContext(q) {
-    if (!q || !q.trim()) { newLiveMatches = []; renderNewLiveContext(); return; }
+    if (!q || !q.trim()) { newLiveMatches = []; newLiveCtxFor = q; renderNewLiveContext(); return; }
     try {
         const res = await fetch('/api/related?q=' + encodeURIComponent(q), { signal: AbortSignal.timeout(5000) });
         const data = await res.json();
+        // Out-of-order responses must not repoint the picker at an older prompt's
+        // matches (Start reads the selection by index at click time).
+        if (document.getElementById('newLivePrompt').value !== q) return;
+        newLiveCtxFor = q;
         if (!Array.isArray(data)) { newLiveMatches = []; renderNewLiveContext(); return; }
         // Only whole sessions can seed a new session (a sub-agent can't be resumed
         // and has no standalone context file).
@@ -1916,6 +1991,7 @@ async function fetchNewLiveContext(q) {
         renderNewLiveContext();
     } catch {
         // best-effort: the selector just stays on "Start clean"
+        if (document.getElementById('newLivePrompt').value === q) newLiveCtxFor = q;
     }
 }
 
@@ -1927,10 +2003,18 @@ function renderNewLiveContext() {
         opts.push(`<option value="${i}">${verb}: ${esc(m.title || m.sessionId.slice(0, 8))}${m.repo ? ' · ' + esc(m.repo) : ''}</option>`);
     });
     sel.innerHTML = opts.join('');
-    // Default to the closest match that has a saved context file (prime). Don't
-    // auto-pick a "continue" match — that would drop the task the user just typed.
-    const firstPrime = newLiveMatches.findIndex((m) => m.contextPath);
-    sel.value = firstPrime >= 0 ? String(firstPrime) : '';
+    if (newLiveUserPick !== null) {
+        // An explicit choice (incl. "Start clean") is never overridden by a
+        // re-render. It is keyed by sessionId — indices shift with fresh matches;
+        // if the picked session dropped out of the list, fall back to clean.
+        const idx = newLiveUserPick === '' ? -1 : newLiveMatches.findIndex((m) => m.sessionId === newLiveUserPick);
+        sel.value = idx >= 0 ? String(idx) : '';
+    } else {
+        // Default to the closest match that has a saved context file (prime). Don't
+        // auto-pick a "continue" match — that would drop the task the user just typed.
+        const firstPrime = newLiveMatches.findIndex((m) => m.contextPath);
+        sel.value = firstPrime >= 0 ? String(firstPrime) : '';
+    }
     updateNewLiveContextHint();
 }
 
@@ -1944,7 +2028,11 @@ function updateNewLiveContextHint() {
         : 'resumes that session instead of starting new (your prompt above is not sent)';
 }
 
-document.getElementById('newLiveContext').addEventListener('change', updateNewLiveContextHint);
+document.getElementById('newLiveContext').addEventListener('change', () => {
+    const sel = document.getElementById('newLiveContext');
+    newLiveUserPick = sel.value === '' ? '' : (newLiveMatches[Number(sel.value)]?.sessionId ?? null);
+    updateNewLiveContextHint();
+});
 document.getElementById('newLivePrompt').addEventListener('input', (e) => {
     clearTimeout(newLiveCtxTimer);
     const q = e.target.value;
@@ -1957,7 +2045,19 @@ document.getElementById('newLiveGo').onclick = async () => {
     if (!cwd) { toast('❌ pick a repo or enter an absolute path'); return; }
     const level = document.getElementById('newLiveLevel').value;
     if (level === 'full' && !confirm(FULL_LIVE_CONFIRM)) return;
-    const prompt = document.getElementById('newLivePrompt').value.trim() || undefined;
+    const rawPrompt = document.getElementById('newLivePrompt').value;
+    const prompt = rawPrompt.trim() || undefined;
+    // The advertised default is "prime from the nearest context match". If the
+    // lookup for the current prompt hasn't landed yet (fast Start, or the 350ms
+    // debounce hasn't even fired), settle it now — starting cold here would
+    // silently skip the promised priming. An explicit user pick is used as-is.
+    if (newLiveUserPick === null && prompt && newLiveCtxFor !== rawPrompt) {
+        clearTimeout(newLiveCtxTimer);
+        const goBtn = document.getElementById('newLiveGo');
+        goBtn.disabled = true;
+        await fetchNewLiveContext(rawPrompt);
+        goBtn.disabled = false;
+    }
     const ctxSel = document.getElementById('newLiveContext').value;
     const match = ctxSel === '' ? null : newLiveMatches[Number(ctxSel)];
     closeDlg('newLiveDialog');
@@ -2085,15 +2185,18 @@ async function openChat(id) {
 
 async function loadChat(scrollToEnd) {
     if (!chatSession) return;
+    const id = chatSession;
     chatLastFetchAt = Date.now();
     const body = document.getElementById('chatBody');
     try {
-        const res = await fetch('/api/transcript/' + chatSession, { signal: AbortSignal.timeout(8000) });
+        const res = await fetch('/api/transcript/' + id, { signal: AbortSignal.timeout(8000) });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const msgs = await res.json();
+        if (id !== chatSession) return; // the dialog moved on — never paint another session's messages
         if (!Array.isArray(msgs)) throw new Error('unexpected response');
         renderChat(msgs, scrollToEnd);
     } catch (err) {
+        if (id !== chatSession) return;
         if (body.querySelector('.chatmsg')) return;   // keep what we have on a transient error
         body.innerHTML = `<p class="meta">could not load chat: ${esc(err.message)}</p>`;
     }

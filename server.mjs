@@ -417,7 +417,14 @@ async function readBody(req) {
         parts.push(chunk);
     }
     const raw = Buffer.concat(parts).toString('utf8');
-    return raw ? JSON.parse(raw) : {};
+    if (!raw) return {};
+    try {
+        return JSON.parse(raw);
+    } catch {
+        const err = new Error('invalid JSON');
+        err.statusCode = 400;
+        throw err;
+    }
 }
 
 function sendJson(res, code, data) {

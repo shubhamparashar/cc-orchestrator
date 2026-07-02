@@ -3,6 +3,29 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+Silent-staleness guard. The always-on process serves `public/index.html` fresh from disk but freezes
+its HTTP route table at startup, so after a pull that adds endpoints it kept serving the new UI while
+404-ing the new routes — until someone manually restarted it. The dashboard now detects and surfaces
+that drift.
+
+### Added
+- **Build/version stamp** (`lib/version.mjs`) — captures the commit the process booted from and
+  compares it to the commit on disk now; exposed at a tiny **`GET /api/version`**
+  (`{ app, boot, head, stale, uptimeSec, restart }`). Git-derived, with cwd pinned to the repo root
+  and a short cache; a non-git install (or missing `git`) reports unknown SHAs and is never flagged
+  stale. No version is baked into the HTML, so there is still **no build step**.
+- **Stale-build banner** (`public/index.html`) — a dismissible amber banner that appears when the
+  running server is older than the code on disk, with the platform-appropriate restart command. A
+  `404` on `/api/version` is itself treated as stale (the process predates the route), so the guard
+  detects even the drift across its own introduction. Dismissal is keyed to the specific drift.
+- **`cc-doctor` staleness check** — probes an already-running server on the port and **WARN**s when its
+  in-memory build is older than `HEAD`, with the restart command as the fix.
+- Bug reports (`/api/diag`) now include the **build stamp + stale flag** so a stale process shows up
+  in triage (a short git SHA is a public commit id, not a secret).
+- CI smoke boot now also curls `/api/version` on macOS + Linux.
+
 ## [1.1.0] — 2026-06-24
 
 Linux support. The Mac-only platform glue is now isolated behind a single platform gate, so the
@@ -81,5 +104,6 @@ all your Claude Code sessions, made installable and honest for someone other tha
 - All session data is read-only; the only write outside the tool's own config is the additive
   `settings.json` hook merge performed by `cc-install-hooks`.
 
+[Unreleased]: https://github.com/shubhamparashar/cc-orchestrator/compare/v1.1.0...HEAD
 [1.1.0]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.1.0
 [1.0.0]: https://github.com/shubhamparashar/cc-orchestrator/releases/tag/v1.0.0

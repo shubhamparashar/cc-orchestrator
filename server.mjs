@@ -14,6 +14,7 @@ import { recentPrompts } from './lib/history.mjs';
 import { startLiveRefresh } from './lib/watch.mjs';
 import { log } from './lib/logger.mjs';
 import { sanitizedEnv, issueUrl } from './lib/diag.mjs';
+import { versionInfo } from './lib/version.mjs';
 import { costSummary, loadPricing } from './lib/pricing.mjs';
 import { sendPrompt, listJobs, stopJob, dismissJob, attachInTerminal, attachCommand, buildLaunchCommand, launchInTerminal } from './lib/actions.mjs';
 import { CONTEXTS_DIR, contextPathFor, isSessionUuid, listContextSessions, loadIndex, readContext } from './lib/contextStore.mjs';
@@ -420,6 +421,13 @@ const handler = async (req, res) => {
         }
         if (req.method === 'GET' && url.pathname === '/api/pricing') {
             return sendJson(res, 200, loadPricing());
+        }
+        if (req.method === 'GET' && url.pathname === '/api/version') {
+            // boot = commit this process loaded; head = commit on disk now. When
+            // they differ the running route table is stale vs the served HTML —
+            // the frontend raises a restart banner. (A 404 here means the process
+            // predates this very route: itself proof it's stale.)
+            return sendJson(res, 200, versionInfo());
         }
         if (req.method === 'GET' && url.pathname === '/api/diag') {
             // Only a loopback caller (the Mac itself, single user) gets the last

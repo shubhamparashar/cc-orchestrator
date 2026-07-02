@@ -35,7 +35,8 @@ node bin/cc-install-hooks # wire the Phase-2 context hooks into ~/.claude/settin
 
 - **`cc-doctor`** prints grouped PASS / WARN / FAIL with a fix for each, and exits non-zero only on
   a blocking FAIL (Node < 20, no `claude`, port in use, config dir unwritable). Run it first if the
-  dashboard is empty or live refresh seems dead.
+  dashboard is empty or live refresh seems dead. It also WARNs when an already-running always-on
+  process is serving an older build than the code on disk (restart it to load new routes).
 - **`cc-install-hooks`** does the additive `~/.claude/settings.json` merge that turns on the rolling
   per-session `context.md`, related-session surfacing, and the 70%-context warning — the features a
   fresh install otherwise ships *without*. It backs up your settings first, is idempotent (re-run
@@ -57,6 +58,16 @@ Run `node bin/cc-doctor` first — it diagnoses most of the below and prints a f
 - **"Port in use" / server won't start.** Something already holds the port (often a previous
   instance). Run on another port — `PORT=7456 node server.mjs` — or stop the other process.
   `cc-doctor` reports whether the port is free.
+- **A button does nothing / console shows `404 {"error":"not found"}` after updating.** The
+  always-on process serves `public/index.html` fresh from disk but freezes its HTTP route table at
+  startup, so after a `git pull` that adds endpoints it keeps serving the new UI while 404-ing the
+  new routes. **Restart the always-on process after pulling new code** so the new routes load:
+    - macOS: `launchctl kickstart -k gui/$(id -u)/com.cc-orchestrator`
+    - Linux: `systemctl --user restart cc-orchestrator.service`
+
+  The dashboard now detects this itself (it compares the running commit to the commit on disk via
+  `/api/version`) and raises an amber *"Dashboard code updated — restart…"* banner; `cc-doctor` also
+  flags a stale running build under **WARN**.
 - **Can't reach it from your phone.** See [Phone access](#phone-access-remote-control): use
   Tailscale, and open the tokenized one-tap link once. LAN mode is plaintext — prefer Tailscale.
 - **Where are the logs?** `node bin/cc-logs` (last 200 lines; `-f` to follow). Rotating, `0600`,

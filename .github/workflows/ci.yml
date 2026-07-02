@@ -39,4 +39,5 @@ jobs:
           curl -sf 127.0.0.1:7459/healthz
           curl -sf 127.0.0.1:7459/api/sessions >/dev/null
           curl -sf 127.0.0.1:7459/api/diag >/dev/null
+          curl -sf 127.0.0.1:7459/api/version >/dev/null
           kill $SRV

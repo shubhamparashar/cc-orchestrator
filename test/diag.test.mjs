@@ -11,6 +11,11 @@ test('sanitizedEnv reports coarse runtime facts and no PII', () => {
     assert.ok(!json.includes(homedir()), 'no home path');
     // no username / cwd / token keys
     for (const k of ['cwd', 'home', 'user', 'token', 'env']) assert.ok(!(k in e), `no ${k}`);
+    // build stamp (boot commit) + staleness flag for triage; a short git SHA is a
+    // public commit id, not a secret, and never a home path.
+    assert.ok('build' in e && 'stale' in e, 'build + stale present');
+    assert.equal(typeof e.stale, 'boolean');
+    assert.ok(e.build === null || /^[0-9a-f]{7}$/.test(e.build), 'build is null or a short SHA');
 });
 
 test('scrub collapses the home dir and redacts secrets', () => {
@@ -34,6 +39,7 @@ test('issueUrl builds a prefilled github issues/new URL', () => {
     const body = u.searchParams.get('body');
     assert.match(body, /## Environment/);
     assert.match(body, /cc-orchestrator: /);
+    assert.match(body, /- Build: /, 'issue body carries the build stamp for triage');
 });
 
 test('issueUrl embeds a scrubbed error when given one', () => {

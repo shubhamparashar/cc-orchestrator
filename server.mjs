@@ -27,7 +27,7 @@ import { buildSessionIndex } from './lib/sessionIndex.mjs';
 import { rankDocs } from './lib/rank.mjs';
 import { claudeStatus } from './lib/status.mjs';
 import {
-    COOKIE_NAME, getCookie, getToken, hostAllowed, isLocalRequest, isSecureRequest,
+    COOKIE_NAME, clearFailures, getCookie, getToken, hostAllowed, isLocalRequest, isSecureRequest,
     rateLimitKey, recordFailure, remoteLink, setCookieHeader, tokenMatches, tooManyFailures,
 } from './lib/auth.mjs';
 
@@ -59,9 +59,22 @@ const STATIC_FILES = {
 
 const sseClients = new Set();
 
+// A half-open SSE peer (device sleep, network switch — no FIN/RST arrives) stops
+// reading but keeps its connection registered; unchecked writes would then buffer
+// every payload in heap until the OS finally errors the socket. Cap the buffered
+// bytes per client and drop the client instead of buffering without bound.
+const SSE_MAX_BUFFERED = 4 * 1024 * 1024;
+
 function broadcast(event, data) {
     const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-    for (const res of sseClients) res.write(payload);
+    for (const res of sseClients) {
+        if (res.destroyed || res.writableLength > SSE_MAX_BUFFERED) {
+            sseClients.delete(res);
+            res.destroy();
+            continue;
+        }
+        res.write(payload);
+    }
 }
 
 // Run async work over items with a bounded number in flight at once.
@@ -178,9 +191,18 @@ async function costRollup(sessions, window) {
     // Two day×model maps per session — its own transcript plus its sub-agents —
     // both fed to the rollup so the cost-over-time view and the budget alert
     // include sub-agent spend (additive, same no-double-count guarantee as attachCost).
+    // Fail-open per session (one unreadable transcript must not blank the whole
+    // rollup), but never silently: an unlogged failure here prices sessions at $0
+    // indistinguishably from zero spend.
     const perSession = await mapLimit(sessions, 8, async (s) => {
-        const own = await usageByDateModel(join(PROJECTS_DIR, s.projectDir, `${s.sessionId}.jsonl`)).catch(() => ({}));
-        const sub = await subagentDateModel(PROJECTS_DIR, s.projectDir, s.sessionId).catch(() => ({}));
+        const own = await usageByDateModel(join(PROJECTS_DIR, s.projectDir, `${s.sessionId}.jsonl`)).catch((err) => {
+            log.warn(`cost rollup failed for ${s.sessionId}: ${err.message}`);
+            return {};
+        });
+        const sub = await subagentDateModel(PROJECTS_DIR, s.projectDir, s.sessionId).catch((err) => {
+            log.warn(`sub-agent cost rollup failed for ${s.sessionId}: ${err.message}`);
+            return {};
+        });
         return [own, sub];
     });
     const dailyMaps = perSession.flat();
@@ -417,7 +439,21 @@ async function readBody(req) {
         parts.push(chunk);
     }
     const raw = Buffer.concat(parts).toString('utf8');
-    return raw ? JSON.parse(raw) : {};
+    if (!raw) return {};
+    let parsed;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        parsed = undefined;
+    }
+    // Every POST route destructures the body, so a valid-JSON scalar or `null`
+    // is as unusable as malformed JSON — reject both classes as a client error.
+    if (parsed === null || typeof parsed !== 'object') {
+        const err = new Error('invalid JSON');
+        err.statusCode = 400;
+        throw err;
+    }
+    return parsed;
 }
 
 function sendJson(res, code, data) {
@@ -463,20 +499,30 @@ const handler = async (req, res) => {
     if (!local) {
         const ip = rateLimitKey(req);
         if (url.pathname === '/login') {
-            if (tooManyFailures(ip)) return sendJson(res, 429, { error: 'too many attempts, wait a minute' });
-            if (tokenMatches(url.searchParams.get('key'))) {
+            // /login key guesses draw from their own budget, separate from generic
+            // unauthenticated traffic — a stale dashboard tab polling with a dead
+            // cookie must never lock a correct-token login out.
+            const loginKey = `login:${ip}`;
+            const key = url.searchParams.get('key');
+            if (tooManyFailures(loginKey)) return sendJson(res, 429, { error: 'too many attempts, wait a minute' });
+            if (tokenMatches(key)) {
+                clearFailures(loginKey);
+                clearFailures(ip);
                 res.writeHead(302, {
                     'Set-Cookie': setCookieHeader(getToken(), isSecureRequest(req)),
                     Location: '/',
                 });
                 return res.end();
             }
-            recordFailure(ip);
-            return sendLoginPage(res, 401, url.searchParams.get('key') ? 'Invalid token.' : '');
+            if (key) recordFailure(loginKey);
+            return sendLoginPage(res, 401, key ? 'Invalid token.' : '');
         }
-        if (!tokenMatches(getCookie(req, COOKIE_NAME))) {
+        const cookie = getCookie(req, COOKIE_NAME);
+        if (!tokenMatches(cookie)) {
             if (tooManyFailures(ip)) return sendJson(res, 429, { error: 'too many attempts, wait a minute' });
-            recordFailure(ip);
+            // Only an actually-presented (wrong) credential counts as a guess; a
+            // cookie-less poll from a logged-out tab is not brute force.
+            if (cookie) recordFailure(ip);
             if (wantsHtml(req, url)) return sendLoginPage(res, 401, '');
             return sendJson(res, 401, { error: 'auth required' });
         }
@@ -610,6 +656,9 @@ const handler = async (req, res) => {
             const { sessionId, cwd, text, fork } = await readBody(req);
             if (!sessionId || !text) return sendJson(res, 400, { error: 'sessionId and text required' });
             if (!isSessionUuid(sessionId)) return sendJson(res, 400, { error: 'invalid session id' });
+            // A truthy non-string cwd would make spawn() throw synchronously —
+            // that's a malformed request, not a server fault.
+            if (cwd != null && typeof cwd !== 'string') return sendJson(res, 400, { error: 'invalid cwd' });
             const onUpdate = (job) => {
                 const { child, ...safe } = job;
                 broadcast('job', safe);
@@ -687,6 +736,14 @@ const handler = async (req, res) => {
         }
         sendJson(res, 404, { error: 'not found' });
     } catch (err) {
+        // A client that vanishes mid-request rejects the body read with
+        // ECONNRESET ("aborted"). That is a client disconnect, not a server
+        // fault — it must not feed lastError / the diag bug report or the error
+        // log, and no response can be delivered anyway.
+        if (err?.code === 'ECONNRESET' || err?.message === 'aborted') {
+            log.info(`${req.method} ${url.pathname} — client disconnected mid-request`);
+            return;
+        }
         const code = err.statusCode || 500;
         // Server faults (5xx) feed the consent-gated bug report at /api/diag; client
         // errors (4xx) are expected and not recorded.
@@ -700,6 +757,22 @@ const handler = async (req, res) => {
 
 // Most recent server-side fault, surfaced (sanitized) by /api/diag's issue link.
 let lastError = null;
+
+// The pre-route section of the handler (host allowlist, auth, CSRF) runs before
+// its try/catch; if anything there throws (e.g. a failing token-file write on
+// first use), the async rejection would otherwise leave the request hanging
+// forever with only an unhandledRejection log entry. Answer 500 here so every
+// request terminates — without calling back into auth, which may be what threw.
+function safeHandler(req, res) {
+    handler(req, res).catch((err) => {
+        lastError = err?.stack || String(err);
+        // Path only — the query string can carry a /login?key=… credential.
+        log.error(`${req.method} ${String(req.url).split('?')[0]} → 500: ${err?.stack || err}`);
+        try {
+            sendJson(res, 500, { error: 'internal error' });
+        } catch { /* headers already sent or socket gone */ }
+    });
+}
 
 process.on('unhandledRejection', (reason) => {
     lastError = reason?.stack || String(reason);
@@ -730,7 +803,7 @@ for (const sig of ['SIGTERM', 'SIGINT']) {
     });
 }
 
-const server = createServer(handler);
+const server = createServer(safeHandler);
 server.on('error', (err) => {
     log.error(`listen failed on ${HOST}:${PORT}: ${err.message}`);
     process.exit(1);
@@ -751,9 +824,17 @@ server.listen(PORT, HOST, () => {
     });
     log.info(`live refresh: ${refresh.mode}`);
     // Build the Tier-1 index over ALL sessions on first run (free), then keep it
-    // fresh on an interval. Background — never blocks serving.
-    reindex().then((e) => log.info(`session index: ${e.length} sessions`)).catch(() => {});
-    setInterval(() => { reindex().catch(() => {}); }, 5 * 60 * 1000);
+    // fresh on an interval. Background — never blocks serving, but failures must
+    // reach the log (once per distinct message, so a persistent failure doesn't
+    // spam it every interval) or the index silently goes stale.
+    let lastIndexFailure = null;
+    const logIndexFailure = (err) => {
+        const msg = `session index build failed: ${err.message}`;
+        if (msg !== lastIndexFailure) log.warn(msg);
+        lastIndexFailure = msg;
+    };
+    reindex().then((e) => { lastIndexFailure = null; log.info(`session index: ${e.length} sessions`); }).catch(logIndexFailure);
+    setInterval(() => { reindex().then(() => { lastIndexFailure = null; }).catch(logIndexFailure); }, 5 * 60 * 1000);
     // AFK alerts: fire OS notifications for waiting-session digests / budget
     // crossings. Opt-in — only scheduled when the config enables it.
     if (cfg.alerts.enabled) {
@@ -768,6 +849,6 @@ server.listen(PORT, HOST, () => {
 // Browsers may resolve "localhost" to ::1 first; listen there too so those
 // requests don't stall waiting for an IPv6 server that doesn't exist. In LAN
 // mode bind all IPv6 interfaces too.
-const serverV6 = createServer(handler);
+const serverV6 = createServer(safeHandler);
 serverV6.on('error', () => { /* IPv6 unavailable — IPv4 listener is enough */ });
 serverV6.listen(PORT, LAN_MODE ? '::' : '::1');

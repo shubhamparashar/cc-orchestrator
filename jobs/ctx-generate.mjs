@@ -73,22 +73,29 @@ function extractDialogue(records) {
 }
 
 function buildPrompt({ existing, dialogue, repo, title }) {
-    return `You maintain a rolling context file for a coding session so a future agent can resume the work cold. Merge the EXISTING FILE (may be empty) with the NEW CONVERSATION EXCERPT: keep still-true durable facts, drop stale or superseded ones, compress aggressively. Curate — never append. Hard limit ${MAX_BODY_LINES - 5} lines total.
+    return `You maintain a rolling context file for coding sessions—a future agent must resume from it cold.
 
-Output EXACTLY this, with no preamble, no code fences:
-tags: <3-6 short comma-separated topic tags>
+TASK: Merge EXISTING with NEW EXCERPT. Keep facts that remain true. Drop:
+• Tasks marked done or verified
+• Bugs that are fixed
+• Approaches tried and rejected
+• Decisions that are reversed
+Compress mercilessly: one line per fact, reuse existing phrasing if accurate. Never append; overwrite stale sections. Hard limit: ${MAX_BODY_LINES - 5} lines total.
+
+Output EXACTLY this with no preamble, code fences, or extra markdown:
+tags: <3–6 comma-separated topic tags>
 ## Goal
-<1-2 lines: what this session is trying to achieve>
+<1–2 lines: what this session achieves>
 ## Key files
-<bullet list of paths that matter, with a few words each>
+<bullets: file paths + their role/what's changing>
 ## Decisions
-<bullet list of decisions made and constraints discovered>
+<bullets: architectural choices, constraints, tradeoffs made>
 ## State
-<bullet list: what is done / verified, what is broken>
+<bullets: done/verified, broken/stuck, what blocks next step>
 ## Next step
-<1-3 bullets: the immediate next actions>
+<1–3 bullets: exact immediate actions to make progress>
 
-Session repo: ${repo}. Session title: ${title}.
+Session: ${repo} — ${title}
 
 EXISTING FILE:
 ${existing || '(none)'}
@@ -122,6 +129,11 @@ function runClaude(prompt, model) {
             if (code === 0) resolve(stdout);
             else reject(new Error(`claude exited ${code}: ${(stderr || stdout).slice(0, 200).replace(/\s+/g, ' ')}`));
         });
+        // A child that dies without draining stdin (SIGKILL on timeout, a gated
+        // model failing at startup) EPIPEs the pending write; unhandled, that
+        // 'error' event is an uncaughtException that kills the whole generator.
+        // The close/error handlers above already settle the promise.
+        child.stdin.on('error', () => {});
         child.stdin.end(prompt);
     });
 }
@@ -191,7 +203,9 @@ try {
     log(`ok ${sessionId} -> ${path} (${file.length}B)`);
 } catch (err) {
     log(`fail ${sessionId || '?'}: ${err.message}`);
+    process.exitCode = 1;
+} finally {
+    // The lock must go away on every path — a leaked .inflight file blocks all
+    // regeneration for this session until its TTL expires.
     await releaseGenLock(lock);
-    process.exit(1);
 }
-await releaseGenLock(lock);

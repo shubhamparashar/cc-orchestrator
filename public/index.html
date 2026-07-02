@@ -44,13 +44,13 @@
 
     --text:  #1c2733;
     --dim:   #3e4b59;
-    --muted: #66758a;
+    --muted: #5b6a7f;
 
     /* status hues double as badge text — every value clears 4.5:1 on the
        badge's own tinted chip (9% mix on --card), not just on --card itself */
     --green:  #17724b;
     --amber:  #996214;
-    --blue:   #3673ad;
+    --blue:   #30669f;
     --red:    #c03d3d;
     --purple: #7048ad;
     --gold:   #7d5e15;
@@ -1595,6 +1595,10 @@ function syncCards(container, sessions, afterEl = null) {
             if (el.dataset.hash !== h) {
                 const fresh = elFromHtml(html);
                 fresh.dataset.hash = h;
+                // An open action menu is DOM-only state the hash can't see;
+                // carry it over so a re-render of an active card doesn't
+                // snap the menu shut under the pointer.
+                if (el.querySelector('.menuwrap.open')) fresh.querySelector('.menuwrap')?.classList.add('open');
                 el.replaceWith(fresh);
                 el = fresh;
             }

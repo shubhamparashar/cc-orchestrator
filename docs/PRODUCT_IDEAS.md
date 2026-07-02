@@ -312,3 +312,24 @@ Node-version gate + README fix (≥18→≥20) · one-command installer **incl. 
 quickstart + troubleshooting + demo GIF · `brew upgrade`/`npm` update path · status-bucketed board ·
 A1/A2 health signals. **Deferred to v2+:** Linux/Windows, `.app`/menu-bar, team/multi-user/cloud,
 settings UI, sub-agent-transcript indexing.
+
+---
+
+## Session-24 roadmap (2026-07-02) — researched, ranked, unbuilt
+
+Product ideation from the session-24 research pass (multi-agent audit over PRODUCT_IDEAS,
+CHANGELOG, README, and the CLAUDE.md handoff log; nothing below is shipped as of v1.15.0).
+Ranked by value ÷ effort. Effort: small = hours, medium = a session, large = multi-session.
+
+| # | Feature | Impact / effort | Builds on |
+|---|---|---|---|
+| 1 | **P2c-A: type INTO a live session** — `POST /api/live/input {liveId, text}` writing to the PTY via the FIFO channel validated in v1.12; an input box in the live viewer. Today an `ask`-level live session that hits a permission prompt is stranded unless you're at the Mac. | high / medium | `lib/liveSessions.mjs`, `/api/live` SSE, live viewer |
+| 2 | **Permission-prompt quick actions + live digest** — pattern-match permission/plan prompts and idle-waiting in the (already server-held) stripped output; render one-tap Allow / Deny / free-text in the viewer; fold "live session waiting" into the AFK digest. | high / small (after #1) | #1 input path + `lib/alerts.mjs` |
+| 3 | **Session diff review from the phone** — read-only `GET /api/diff?sessionId=` running `git -C <cwd> status --porcelain` + `diff --stat`/per-file patch in a modal. The board says "✎ 9 files"; this shows WHAT changed without going to the Mac. | high / medium | `lib/scan.mjs` cwd/branch, new modal |
+| 4 | **One-tap Rollover** — on cards past ~70% context: start a new context-primed live session in the same cwd (every ingredient shipped in v1.4/1.13/1.14). | medium / small | `contextualPrompt`, health context signals |
+| 5 | **Adopt claude sessionId for NEW live sessions** — watch the cwd's project dir for the new transcript and join it to the live entry, so fresh live sessions get cost/health/context/View-chat like resumed ones. | medium / small | `lib/liveSessions.mjs` registry, `lib/scan.mjs` |
+| 6 | **P3-lite: cursor-aware line discipline** — interpret CR / cursor-up / erase-line so spinner redraws stop duplicating lines in the live feed; ~80% of P3's value at ~10% of its cost. | medium / small | `lib/ansi.mjs`, `lib/ringBuffer.mjs` |
+| 7 | **Web Push for AFK alerts** — zero-dep VAPID service worker so the waiting-on-you/budget alerts reach the phone (they currently osascript the Mac — where the AFK operator isn't). | high / large | `lib/alerts.mjs`, `lib/notify.mjs`, PWA |
+| 8 | **PR checks / merge-state chips** — cached, throttled `gh pr view --json state,statusCheckRollup` per unique (repo, PR); fail-open like `lib/status.mjs`. | medium / medium | `lib/scan.mjs` prNumbers |
+| 9 | **Fleet activity timeline** — "what happened while I was away": chronological day view of session starts/ends, live launches/stops (audit log), compactions, destructive-command flags, cost by hour. | medium / medium | `lib/health.mjs`, cost rollup, audit log |
+| 10 | **P3 full TUI renderer** — honest assessment: poor value/effort under the zero-dep constraint (a real terminal emulator in vanilla JS); **stays deferred**. | low / large | — |

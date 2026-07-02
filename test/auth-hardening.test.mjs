@@ -45,3 +45,15 @@ test('rateLimitKey prefers the non-forgeable Tailscale identity', () => {
     };
     assert.strictEqual(rateLimitKey(req), 'ts:me@example.com');
 });
+
+test('rateLimitKey ignores a Tailscale header from a direct (non-loopback) peer', () => {
+    // Only the local reverse proxy injects this header; a LAN peer sending it
+    // directly is spoofing and must not be able to rotate its bucket with it.
+    const req = {
+        socket: { remoteAddress: '192.168.1.50' },
+        headers: { 'tailscale-user-login': 'fake@example.com' },
+    };
+    assert.strictEqual(rateLimitKey(req), '192.168.1.50');
+    req.headers['tailscale-user-login'] = 'other@example.com';
+    assert.strictEqual(rateLimitKey(req), '192.168.1.50');
+});

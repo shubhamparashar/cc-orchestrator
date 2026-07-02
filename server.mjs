@@ -766,7 +766,8 @@ let lastError = null;
 function safeHandler(req, res) {
     handler(req, res).catch((err) => {
         lastError = err?.stack || String(err);
-        log.error(`${req.method} ${req.url} → 500: ${err?.stack || err}`);
+        // Path only — the query string can carry a /login?key=… credential.
+        log.error(`${req.method} ${String(req.url).split('?')[0]} → 500: ${err?.stack || err}`);
         try {
             sendJson(res, 500, { error: 'internal error' });
         } catch { /* headers already sent or socket gone */ }

@@ -5,11 +5,11 @@ import { spawn as realSpawn } from 'node:child_process';
 
 import {
     accessFlags, ACCESS_LEVELS, isLiveCwd, buildClaudeArgs, buildScriptSpawn,
-    startLive, stopLive, stopAllLive, hardKillAllLive, listLive, liveBuffer, getLive, _resetLive,
+    startLive, stopLive, stopAllLive, hardKillAllLive, listLive, liveBuffer, getLive, _resetLive, _liveEntries,
 } from '../lib/liveSessions.mjs';
 import { shq } from '../lib/actions.mjs';
 import { RingBuffer } from '../lib/ringBuffer.mjs';
-import { stripAnsi } from '../lib/ansi.mjs';
+import { stripAnsi, AnsiStreamStripper } from '../lib/ansi.mjs';
 
 const UUID_A = '11111111-1111-1111-1111-111111111111';
 const UUID_B = '22222222-2222-2222-2222-222222222222';
@@ -155,6 +155,41 @@ test('stripAnsi preserves newlines and tabs, folds CR', () => {
     assert.equal(stripAnsi('a\rb'), 'ab');
 });
 
+// ── chunk-boundary-safe stripping (pipe reads split mid-sequence) ────────────
+test('AnsiStreamStripper holds an SGR sequence split across chunks', () => {
+    const st = new AnsiStreamStripper();
+    assert.equal(st.push('hello \x1b[38;5;1'), 'hello ');
+    assert.equal(st.push('96mRED\x1b[0m world'), 'RED world');
+    assert.equal(st.flush(), '');
+});
+
+test('AnsiStreamStripper holds a bare trailing ESC / ESC[ prefix', () => {
+    const st = new AnsiStreamStripper();
+    assert.equal(st.push('a\x1b'), 'a');
+    assert.equal(st.push('[2Kb'), 'b');
+    assert.equal(st.push('c\x1b['), 'c');
+    assert.equal(st.push('?25hd'), 'd');
+});
+
+test('AnsiStreamStripper holds an OSC title split across chunks', () => {
+    const st = new AnsiStreamStripper();
+    assert.equal(st.push('\x1b]0;win'), '');
+    assert.equal(st.push('dow-title\x07hi'), 'hi');
+});
+
+test('AnsiStreamStripper passes complete chunks through unchanged', () => {
+    const st = new AnsiStreamStripper();
+    assert.equal(st.push('\x1b[31mred\x1b[0m ok\n'), 'red ok\n');
+    assert.equal(st.push('plain text 123'), 'plain text 123');
+    assert.equal(st.flush(), '');
+});
+
+test('AnsiStreamStripper flush drops an unterminated trailing sequence', () => {
+    const st = new AnsiStreamStripper();
+    assert.equal(st.push('x\x1b[31'), 'x');
+    assert.equal(st.flush(), '');
+});
+
 // ── registry: fakes (no real process behind them) ───────────────────────────
 // pid above any real OS pid so killGroup's process.kill(-pid) reliably ESRCHes
 // into the child.kill fallback, never signalling a real group.
@@ -231,6 +266,62 @@ test('startLive strips ANSI from child output and forwards + buffers it by liveI
     child.stdout.emit('data', Buffer.from('\x1b[32mhello\x1b[0m\n'));
     assert.deepEqual(seen, [[r.liveId, 'hello\n']]);
     assert.equal(liveBuffer(r.liveId), 'hello\n');
+});
+
+// ── stop/exit lifecycle: exactly-once exit, stop escalation, prune safety ────
+test('spawn failure fires onExit exactly once (error and close both fire)', () => {
+    const child = fakeChild();
+    let exits = 0;
+    let last = null;
+    startLive({ sessionId: UUID_A, level: 'ask' }, {
+        spawnFn: () => child,
+        onExit: (id, entry) => { exits++; last = entry; },
+    });
+    child.emit('error', new Error('spawn ENOENT'));
+    child.emit('close', -2);
+    assert.equal(exits, 1);
+    assert.equal(last.status, 'error');
+});
+
+test('stopLive escalates SIGTERM to SIGKILL when the group survives the grace period', async () => {
+    const child = fakeChild();
+    const r = startLive({ sessionId: UUID_A, level: 'ask' }, { spawnFn: () => child });
+    assert.equal(stopLive(r.liveId, 40), true);
+    assert.equal(child.killed, 'SIGTERM');
+    await new Promise((res) => setTimeout(res, 250));
+    assert.equal(child.killed, 'SIGKILL');
+});
+
+test('stopLive does not escalate once the exit is confirmed', async () => {
+    const child = fakeChild();
+    const r = startLive({ sessionId: UUID_A, level: 'ask' }, { spawnFn: () => child });
+    stopLive(r.liveId, 40);
+    child.emit('close', null); // exit lands within the grace window
+    await new Promise((res) => setTimeout(res, 250));
+    assert.equal(child.killed, 'SIGTERM');
+});
+
+test('prune never evicts a stopped entry whose process has not exited', () => {
+    const child = fakeChild();
+    const r = startLive({ sessionId: UUID_A, level: 'ask' }, { spawnFn: () => child });
+    stopLive(r.liveId, 999999);
+    const entry = _liveEntries().find((e) => e.liveId === r.liveId);
+    entry.endedAt = 0; // far past the retention cutoff
+    assert.equal(listLive().length, 1); // listLive() prunes — the entry must survive
+    child.emit('close', null);
+    assert.equal(listLive().length, 0); // exit confirmed → reaped normally
+    assert.equal(getLive(r.liveId), null);
+});
+
+test('a stopped-but-not-exited entry still holds the PTY and blocks a re-resume', () => {
+    const child = fakeChild();
+    const r = startLive({ sessionId: UUID_A, level: 'ask' }, { spawnFn: () => child });
+    stopLive(r.liveId, 999999);
+    const dup = startLive({ sessionId: UUID_A, level: 'ask' }, { spawnFn: () => fakeChild() });
+    assert.equal(dup.error, 'a live session is already running for this id');
+    child.emit('close', null);
+    const ok = startLive({ sessionId: UUID_A, level: 'ask' }, { spawnFn: () => fakeChild() });
+    assert.equal(ok.status, 'running');
 });
 
 // ── shutdown escalation (SIGTERM grace → SIGKILL stragglers) ────────────────

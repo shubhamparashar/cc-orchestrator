@@ -129,6 +129,11 @@ function runClaude(prompt, model) {
             if (code === 0) resolve(stdout);
             else reject(new Error(`claude exited ${code}: ${(stderr || stdout).slice(0, 200).replace(/\s+/g, ' ')}`));
         });
+        // A child that dies without draining stdin (SIGKILL on timeout, a gated
+        // model failing at startup) EPIPEs the pending write; unhandled, that
+        // 'error' event is an uncaughtException that kills the whole generator.
+        // The close/error handlers above already settle the promise.
+        child.stdin.on('error', () => {});
         child.stdin.end(prompt);
     });
 }
@@ -198,7 +203,9 @@ try {
     log(`ok ${sessionId} -> ${path} (${file.length}B)`);
 } catch (err) {
     log(`fail ${sessionId || '?'}: ${err.message}`);
+    process.exitCode = 1;
+} finally {
+    // The lock must go away on every path — a leaked .inflight file blocks all
+    // regeneration for this session until its TTL expires.
     await releaseGenLock(lock);
-    process.exit(1);
 }
-await releaseGenLock(lock);

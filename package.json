@@ -1,6 +1,6 @@
 {
   "name": "@shubhamparashar/cc-orchestrator",
-  "version": "1.14.0",
+  "version": "1.14.1",
   "description": "Local-first, read-only web+phone dashboard over all your Claude Code sessions — status board, lifetime cost, history search, health signals.",
   "type": "module",
   "bin": {
@@ -14,11 +14,33 @@
     "start": "node server.mjs",
     "test": "node --test"
   },
-  "engines": { "node": ">=20" },
-  "publishConfig": { "access": "public" },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {},
   "license": "MIT",
   "author": "Shubham Parashar <shubham.p@joinfleek.com>",
-  "files": ["server.mjs", "lib/", "public/", "bin/", "hooks/", "jobs/", "README.md", "REPORT.md", "LICENSE", "SECURITY.md", "CHANGELOG.md"],
-  "keywords": ["claude-code", "dashboard", "local-first", "read-only", "cli"]
+  "files": [
+    "server.mjs",
+    "lib/",
+    "public/",
+    "bin/",
+    "hooks/",
+    "jobs/",
+    "README.md",
+    "REPORT.md",
+    "LICENSE",
+    "SECURITY.md",
+    "CHANGELOG.md"
+  ],
+  "keywords": [
+    "claude-code",
+    "dashboard",
+    "local-first",
+    "read-only",
+    "cli"
+  ]
 }

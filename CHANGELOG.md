@@ -3,6 +3,41 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.14.1] — 2026-07-02
+
+### Fixed
+- **Bug sweep: 29 adversarially-verified findings across the server, libraries, and dashboard.**
+  - **Server hardening:** invalid or non-object JSON bodies (including `null`) now return 400
+    instead of 500; a client aborting mid-request is treated as a disconnect, not logged as a
+    server error into `lastError` / `/api/diag`; `/api/send` validates `cwd` type; SSE broadcasts
+    cap per-client buffering (4 MB) and drop dead half-open connections; a throw anywhere in the
+    request path (including pre-route auth) now always answers instead of hanging the request;
+    cost-rollup and session-reindex failures are logged instead of silently swallowed.
+  - **Live sessions:** stopping a live session escalates SIGTERM → SIGKILL after a grace period;
+    the registry never evicts an entry whose process is still alive (no more unkillable orphans);
+    a spawn failure emits exactly one exit event; ANSI stripping is now stateful across PTY chunk
+    boundaries, so escape sequences split mid-chunk no longer leak garbage into the live feed.
+  - **Data accuracy:** the context gauge and model label ignore `<synthetic>` transcript records;
+    the per-date usage cache is pruned alongside the session cache (no unbounded growth in the
+    24/7 agent); the context generator survives a child EPIPE and always releases its gen-lock.
+  - **Dashboard:** *Send prompt* no longer discards the typed prompt on a server error (the error
+    is shown and the draft kept); the chat viewer, launcher, prompt-history palette, and the
+    new-live "Prior context" picker all guard against stale/out-of-order responses (no more
+    wrong-session renders or lost searches); a slow poll can't overwrite fresher pushed data;
+    repo dropdowns no longer snap shut while being picked; Enter on a launcher match respects
+    remote mode; clipboard feedback is truthful; a cancelled prompt draft never leaks into a
+    different session's dialog.
+
+### Security
+- Failed-login rate limiting now uses a dedicated per-IP bucket for `/login` attempts, so an
+  unauthenticated dashboard tab polling the API can no longer exhaust the login budget and lock
+  out a login with the *correct* token; brute-force limits on presented credentials are unchanged.
+- Proxy-injected identity headers (`Tailscale-User-Login`, `X-Forwarded-For`) are trusted for
+  rate-limit identity only when the request arrives via the local reverse proxy (loopback
+  socket) — a direct LAN peer can no longer rotate its rate-limit bucket by spoofing them.
+- Server-error logs record the request path without its query string, so a failing
+  `/login?key=…` request can't write the credential into the log file.
+
 ## [1.14.0] — 2026-06-29
 
 ### Added

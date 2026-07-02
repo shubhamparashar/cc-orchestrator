@@ -112,3 +112,31 @@ test('/api/attach rejects a non-UUID sessionId', async () => {
     assert.strictEqual(r.status, 400);
     assert.match(r.body, /invalid session id/);
 });
+
+test('a body of JSON null is a 400 client error, not a 500', async () => {
+    const r = await http(
+        'POST', '/api/jobs/stop',
+        { 'Content-Type': 'application/json', 'X-CC': '1' }, 'null',
+    );
+    assert.strictEqual(r.status, 400);
+    assert.match(r.body, /invalid JSON/);
+});
+
+test('a scalar JSON body is a 400 client error, not a 500', async () => {
+    const r = await http(
+        'POST', '/api/jobs/stop',
+        { 'Content-Type': 'application/json', 'X-CC': '1' }, '5',
+    );
+    assert.strictEqual(r.status, 400);
+    assert.match(r.body, /invalid JSON/);
+});
+
+test('/api/send rejects a non-string cwd before it reaches spawn', async () => {
+    const r = await http(
+        'POST', '/api/send',
+        { 'Content-Type': 'application/json', 'X-CC': '1' },
+        '{"sessionId":"11111111-2222-3333-4444-555555555555","text":"hi","cwd":123}',
+    );
+    assert.strictEqual(r.status, 400);
+    assert.match(r.body, /invalid cwd/);
+});

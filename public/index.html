@@ -485,8 +485,15 @@ main { padding: var(--sp-3) clamp(14px,3vw,26px) 90px; max-width: 1380px; margin
 
 /* ── status-bucketed board ───────────────────────────────── */
 /* #grid keeps an id selector, so the board overrides must out-specify it. */
-#grid.board { grid-template-columns: repeat(4, minmax(0,1fr)); gap: var(--sp-4); align-items: start; }
-.col { display: flex; flex-direction: column; gap: 13px; min-width: 0; }
+/* One continuous flow of status groups (Linear list pattern): each group is a
+   full-width sticky header + a responsive card grid sized to its content, so an
+   empty group costs one slim row and a huge one wraps wide instead of towering. */
+#grid.board { grid-template-columns: 1fr; gap: var(--sp-5); align-items: start; }
+.col { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 13px; min-width: 0; }
+.col > .colhead { grid-column: 1 / -1; cursor: pointer; user-select: none; }
+.colhead .chev { color: var(--muted); font-size: 10px; transition: transform .15s ease; }
+.col.collapsed .chev { transform: rotate(-90deg); }
+.col.collapsed > .card, .col.collapsed > .colempty, .col.collapsed > .colmore { display: none; }
 .colhead {
     display: flex; align-items: center; gap: 8px; padding: 9px 12px;
     border-radius: var(--r-md);
@@ -501,13 +508,10 @@ main { padding: var(--sp-3) clamp(14px,3vw,26px) 90px; max-width: 1380px; margin
     background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; }
 .col.waiting .colhead { border-color: color-mix(in srgb, var(--amber) 45%, transparent); }
 .col.working .colhead { border-color: color-mix(in srgb, var(--green) 45%, transparent); }
-.colempty {
-    color: var(--muted); font-size: var(--fs-sm); text-align: center; padding: 22px 8px;
-    border: 1.5px dashed var(--line-strong); border-radius: var(--r-md);
-}
-.colmore { color: var(--muted); font-size: 11.5px; text-align: center; padding: 6px; }
+.colempty { grid-column: 1 / -1; color: var(--muted); font-size: var(--fs-sm); padding: 0 12px 2px; }
+.colmore { grid-column: 1 / -1; color: var(--muted); font-size: 11.5px; padding: 2px 12px 4px; }
 .col .card { container-type: normal; }
-@media (max-width: 1100px) { #grid.board { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (max-width: 720px) { .col { grid-template-columns: 1fr; } }
 @media (max-width: 700px)  { #grid.board { grid-template-columns: 1fr; } .colhead { position: static; } }
 
 /* ── task progress bar (A1) ──────────────────────────────── */
@@ -752,17 +756,32 @@ label.chk { font-size: var(--fs-sm); color: var(--muted); display: inline-flex; 
     border-radius: var(--r-md); padding: 14px; max-height: 56vh; overflow: auto;
     display: grid; gap: 11px; align-content: start;
 }
-.chatmsg { display: grid; gap: 3px; max-width: 100%; }
+.chatmsg { display: grid; gap: 4px; max-width: 100%; }
 .chatmsg.user { justify-items: end; }
-.chatmsg.assistant { justify-items: start; }
+.chatmsg.assistant { justify-items: stretch; }
 .chatmsg .who { font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 0 4px; }
 .chatmsg.user .who { color: var(--muted); }
 .chatmsg.assistant .who { color: var(--accent-dk); }
+/* Asymmetric thread (Linear/Claude pattern): only the user turn gets a card;
+   the assistant reads as bare text behind a hairline rule, so two gray boxes
+   never compete. Gold stays a 2px accent line, never a fill. */
 .chatmsg .bubble {
-    font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
-    border-radius: 13px; padding: 9px 13px; max-width: 90%; cursor: pointer; position: relative;
+    font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+    cursor: pointer; position: relative;
 }
-.chatmsg .bubble:hover { filter: brightness(0.97); }
+.chatmsg.user .bubble {
+    background: var(--card-up); color: var(--text);
+    border: 1px solid var(--line-strong);
+    border-top: 2px solid color-mix(in srgb, var(--accent-strong) 55%, transparent);
+    border-radius: 12px; padding: 10px 14px; max-width: 82%;
+}
+.chatmsg.assistant .bubble {
+    background: none; border: 0; border-radius: 0; max-width: 100%;
+    border-left: 2px solid var(--line-strong);
+    padding: 2px 4px 2px 14px;
+}
+.chatmsg .bubble:hover { background-color: color-mix(in srgb, var(--text) 4%, transparent); }
+.chatmsg.user .bubble:hover { background-color: color-mix(in srgb, var(--card-up) 92%, var(--text)); }
 .chatmsg .bubble.flash::after {
     content: attr(data-flash);
     position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -770,9 +789,7 @@ label.chk { font-size: var(--fs-sm); color: var(--muted); display: inline-flex; 
     padding: 4px 11px; border-radius: 999px; box-shadow: var(--elev-2);
     white-space: nowrap; pointer-events: none; animation: toastIn .18s ease both;
 }
-.chatmsg.user .bubble { background: var(--accent-strong); color: var(--accent-ink); }
-.chatmsg.assistant .bubble { background: var(--card-up); color: var(--text); border: 1px solid var(--line); }
-@media (max-width: 700px) { .chatmsg .bubble { max-width: 96%; } }
+@media (max-width: 700px) { .chatmsg.user .bubble { max-width: 96%; } }
 
 /* footer */
 .footlink { color: var(--muted); font-size: var(--fs-sm); text-decoration: none; }
@@ -1625,6 +1642,15 @@ function setTotal(el, to, suffix, title) {
 // Status-bucketed triage board (B-P1). Every status maps to exactly one column;
 // "Waiting on you" is first-class and leftmost. Waiting/Working are uncapped (you
 // want all of them); the long-tail Idle/Done columns cap with an honest "+N more".
+let collapsedGroups = {};
+try { collapsedGroups = JSON.parse(localStorage.getItem('cc-collapsed') || '{}') || {}; } catch { /* storage may be blocked */ }
+
+function toggleGroup(key, col) {
+    collapsedGroups[key] = !collapsedGroups[key];
+    col.classList.toggle('collapsed', collapsedGroups[key]);
+    try { localStorage.setItem('cc-collapsed', JSON.stringify(collapsedGroups)); } catch { /* ignore */ }
+}
+
 const BOARD = [
     { key: 'waiting', label: 'Waiting on you', dot: 'waiting-on-input', match: (s) => s.status === 'waiting-on-input', cap: 0,  empty: 'Nothing waiting on you' },
     { key: 'working', label: 'Working',        dot: 'running',          match: (s) => s.status === 'running',          cap: 0,  empty: 'nothing running' },
@@ -1756,8 +1782,8 @@ function render() {
     // Column shells persist across renders; only their contents reconcile.
     if (grid.className !== 'board' || !grid.querySelector(':scope > .col')) {
         grid.className = 'board';
-        grid.innerHTML = BOARD.map((b) => `<div class="col ${b.key}">
-            <div class="colhead"><span class="dot ${b.dot}"></span><span class="lbl">${b.label}</span><span class="n"></span></div>
+        grid.innerHTML = BOARD.map((b) => `<div class="col ${b.key}${collapsedGroups[b.key] ? ' collapsed' : ''}">
+            <div class="colhead" onclick="toggleGroup('${b.key}', this.parentElement)" title="collapse / expand"><span class="chev">▼</span><span class="dot ${b.dot}"></span><span class="lbl">${b.label}</span><span class="n"></span></div>
         </div>`).join('');
     }
     const cols = grid.querySelectorAll(':scope > .col');

@@ -19,3 +19,4 @@ node_modules/
 
 # runtime config + secrets live OUTSIDE the repo, in ~/.config/cc-orchestrator/
 # (token, hosts, remote.json) — listed here only as a reminder; nothing to ignore in-tree
+dist/

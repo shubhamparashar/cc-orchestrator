@@ -35,6 +35,31 @@ Optional: `npm i -g github:shubhamparashar/cc-orchestrator` (or `npm i -g .` fro
 Tailscale. See [SECURITY.md](SECURITY.md) for the trust model (loopback is unauthenticated; LAN is
 plaintext — prefer Tailscale).
 
+## Mac app (.app / DMG)
+
+Build a double-clickable app (bare .app bundle — no Electron, no new deps; the
+repo is copied into `Contents/Resources/app`):
+
+```sh
+./scripts/build-app.sh          # dist/cc-orchestrator.app
+./scripts/build-app.sh --dmg    # + dist/cc-orchestrator.dmg
+```
+
+Drag `cc-orchestrator.app` to `/Applications`. On launch it:
+1. adopts an already-running server on :7433 (never double-starts);
+2. else finds a Node ≥ 20 (PATH, Homebrew, nvm — error dialog if none) and
+   starts the LaunchAgent — reusing an existing `com.cc-orchestrator` install,
+   or registering one from the bundled copy on a fresh Mac;
+3. opens the UI in your default browser.
+
+Uninstall:
+
+```sh
+launchctl bootout gui/$(id -u)/com.cc-orchestrator
+rm ~/Library/LaunchAgents/com.cc-orchestrator.plist
+rm -rf /Applications/cc-orchestrator.app
+```
+
 ## Onboarding (`doctor` + hooks)
 
 ```sh

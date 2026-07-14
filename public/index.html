@@ -558,6 +558,26 @@ body[data-route="chat"] .hero, body[data-route="chat"] main { display: none; }
 .stat { border: 1px solid var(--line-strong); background: var(--inner); border-radius: var(--r-md); padding: 12px 14px; }
 .stat .val { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .stat .lbl { font-size: 11px; opacity: .65; margin-top: 3px; }
+/* categorical series slots (dataviz-validated on both surfaces; fixed order, never cycled) */
+:root { --s1:#2a78d6; --s2:#1baf7a; --s3:#eda100; --s4:#008300; --s5:#4a3aa7; --s6:#e34948; --s-other:#8a8f9c; }
+:root[data-theme="dark"] { --s1:#3987e5; --s2:#199e70; --s3:#c98500; --s4:#008300; --s5:#9085e9; --s6:#e66767; }
+.rollchart { display: flex; align-items: flex-end; gap: 3px; height: 170px; padding: 6px 2px 0; position: relative; }
+.rollchart .colstack { flex: 1 1 0; max-width: 24px; display: flex; flex-direction: column-reverse; height: 100%; justify-content: flex-start; cursor: default; }
+.rollchart .colstack .seg { width: 100%; margin-top: 2px; }
+.rollchart .colstack .seg:last-child { border-radius: 4px 4px 0 0; }
+.rollchart .colstack:hover .seg { filter: brightness(1.15); }
+.rollxaxis { display: flex; gap: 3px; padding: 4px 2px 0; }
+.rollxaxis span { flex: 1 1 0; max-width: 24px; font-size: 10px; color: var(--muted); text-align: center; overflow: visible; white-space: nowrap; }
+.rollymax { position: absolute; top: -6px; left: 2px; font-size: 10px; color: var(--muted); }
+.rolltip { position: fixed; z-index: 50; pointer-events: none; background: var(--card-up); border: 1px solid var(--line-strong);
+    border-radius: var(--r-md); box-shadow: var(--elev-2); padding: 8px 11px; font-size: 12px; display: none; min-width: 150px; }
+.rolltip .t { font-weight: 700; margin-bottom: 4px; }
+.rolltip .r { display: flex; gap: 8px; justify-content: space-between; align-items: center; }
+.rolltip .r i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; }
+.rolltip .r .usd { font-variant-numeric: tabular-nums; }
+.rolldetails { margin-top: 10px; }
+.rolldetails summary { cursor: pointer; }
+
 .mixbar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; border: 1px solid var(--line-strong); }
 .mixbar span { display: block; height: 100%; }
 .mixlegend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 11px; opacity: .8; }
@@ -1149,12 +1169,12 @@ label.chk { font-size: var(--fs-sm); color: var(--muted); display: inline-flex; 
             <span class="tab" data-window="week" tabindex="0" role="button">Week</span>
             <span class="tab" data-window="month" tabindex="0" role="button">Month</span>
         </div>
-        <div class="rollwrap" style="margin-top:8px"><table class="rolltable" id="rollTable"><tbody><tr><td class="meta">loading&hellip;</td></tr></tbody></table></div>
-        <div class="dlgrow" style="padding:10px 0 0">
-            <span class="meta grow">UTC buckets &middot; cumulative API spend &middot; deleted days served from the local ledger</span>
-            <a class="btn" id="costCsv" href="#" download>Download CSV</a>
-            <a class="btn" id="costJson" href="#" target="_blank" rel="noopener">JSON</a>
-        </div>
+        <div class="rollchart" id="rollChart"><span class="meta">loading&hellip;</span></div>
+        <div class="mixlegend" id="rollLegend"></div>
+        <p class="meta" style="margin:8px 0 0">UTC buckets &middot; cumulative API spend &middot; deleted days served from the local ledger</p>
+        <details class="rolldetails"><summary class="meta">data table</summary>
+            <div class="rollwrap" style="margin-top:8px"><table class="rolltable" id="rollTable"><tbody></tbody></table></div>
+        </details>
     </section>
 </section>
 
@@ -2483,23 +2503,90 @@ function setCostWindow(w) {
     loadRollup();
 }
 
+// Stacked daily/weekly/monthly spend columns. Top 6 models get fixed series
+// slots (--s1..--s6, validated palette); the rest fold into a gray "Other".
+const SERIES_VARS = ['--s1', '--s2', '--s3', '--s4', '--s5', '--s6'];
+const CHART_BUCKETS = 30;
+
+function rollTooltip() {
+    let tip = document.getElementById('rollTip');
+    if (!tip) {
+        tip = document.createElement('div');
+        tip.id = 'rollTip';
+        tip.className = 'rolltip';
+        document.body.appendChild(tip);
+    }
+    return tip;
+}
+
+function renderRollChart(buckets, order) {
+    const chart = document.getElementById('rollChart');
+    const shown = buckets.slice(-CHART_BUCKETS);
+    const max = Math.max(...shown.map((b) => b.usd), 1);
+    const H = 158;
+    const colorOf = (m) => order.indexOf(m) < 6 ? `var(${SERIES_VARS[order.indexOf(m)]})` : 'var(--s-other)';
+    chart.innerHTML = `<span class="rollymax">${fmtCost(max)}</span>` + shown.map((b, bi) => {
+        const parts = order.filter((m) => b.byModel?.[m] > 0).map((m) => ({ m, usd: b.byModel[m] }));
+        const segs = parts.map(({ m, usd }) =>
+            `<span class="seg" style="height:${Math.max(1, usd / max * H - 2)}px;background:${colorOf(m)}"></span>`).join('');
+        return `<div class="colstack" data-bi="${bi}">${segs || ''}</div>`;
+    }).join('');
+    const step = Math.ceil(shown.length / 6);
+    let axis = chart.nextElementSibling;
+    if (!axis || !axis.classList.contains('rollxaxis')) {
+        chart.insertAdjacentHTML('afterend', '<div class="rollxaxis"></div>');
+        axis = chart.nextElementSibling;
+    }
+    axis.innerHTML = shown.map((b, i) => `<span>${i % step === 0 ? esc(b.date.slice(5)) : ''}</span>`).join('');
+    const tip = rollTooltip();
+    chart.querySelectorAll('.colstack').forEach((el) => {
+        el.onmouseenter = (e) => {
+            const b = shown[Number(el.dataset.bi)];
+            const rows = order.filter((m) => b.byModel?.[m] > 0)
+                .map((m) => `<div class="r"><span><i style="background:${colorOf(m)}"></i>${esc(m.replace(/^claude-/, ''))}</span><span class="usd">${fmtCost(b.byModel[m])}</span></div>`)
+                .join('');
+            tip.innerHTML = `<div class="t">${esc(b.date)} · ${fmtCost(b.usd)}</div>${rows}`;
+            tip.style.display = 'block';
+            const r = el.getBoundingClientRect();
+            const tw = tip.offsetWidth;
+            tip.style.left = Math.min(Math.max(6, r.left + r.width / 2 - tw / 2), innerWidth - tw - 6) + 'px';
+            tip.style.top = Math.max(6, r.top - tip.offsetHeight - 8) + 'px';
+        };
+        el.onmouseleave = () => { tip.style.display = 'none'; };
+    });
+    document.getElementById('rollLegend').innerHTML = order.slice(0, 7).map((m, i) =>
+        `<span><i style="background:${i < 6 ? `var(${SERIES_VARS[i]})` : 'var(--s-other)'}"></i>${esc(m.replace(/^claude-/, ''))}</span>`).join('');
+}
+
 async function loadRollup() {
-    document.getElementById('costCsv').href = `/api/cost/rollup?window=${costWindow}&format=csv`;
-    document.getElementById('costJson').href = `/api/cost/rollup?window=${costWindow}`;
-    document.getElementById('rollTable').innerHTML = '<tbody><tr><td class="meta"><span class="spin"></span> loading…</td></tr></tbody>';
     try {
         const res = await fetch(`/api/cost/rollup?window=${costWindow}`, { signal: AbortSignal.timeout(8000) });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const r = await res.json();
-        const buckets = (r.buckets || []).slice().reverse();   // most recent first
-        const models = [...new Set(buckets.flatMap((b) => Object.keys(b.byModel || {})))];
+        const buckets = r.buckets || [];   // ascending by date
+        // Fixed slot order: models ranked by total spend across the whole window;
+        // everything past slot 6 folds into "Other" so hues are never cycled.
+        const totals = {};
+        for (const b of buckets) for (const [m, usd] of Object.entries(b.byModel || {})) totals[m] = (totals[m] || 0) + usd;
+        const ranked = Object.entries(totals).sort((a, z) => z[1] - a[1]).map(([m]) => m);
+        const order = ranked.slice(0, 6);
+        if (ranked.length > 6) {
+            for (const b of buckets) {
+                let other = 0;
+                for (const m of ranked.slice(6)) { other += b.byModel?.[m] || 0; delete b.byModel?.[m]; }
+                if (other > 0) (b.byModel ||= {}).Other = other;
+            }
+            order.push('Other');
+        }
         document.getElementById('rollMeta').innerHTML =
             `Total <span class="totalcost">${fmtCost(r.totalUsd)}</span> across ${buckets.length} ${costWindow}${buckets.length === 1 ? '' : 's'} (UTC)`;
-        const head = `<thead><tr><th>${costWindow}</th><th>total</th>${models.map((m) => `<th title="${esc(m)}">${esc(m.replace(/^claude-/, ''))}</th>`).join('')}</tr></thead>`;
-        const rows = buckets.map((b) => `<tr><td>${esc(b.date)}</td><td class="usd">${fmtCost(b.usd)}</td>${models.map((m) => `<td>${b.byModel && b.byModel[m] ? fmtCost(b.byModel[m]) : '·'}</td>`).join('')}</tr>`).join('');
+        renderRollChart(buckets, order);
+        const recent = buckets.slice().reverse();
+        const head = `<thead><tr><th>${costWindow}</th><th>total</th>${order.map((m) => `<th title="${esc(m)}">${esc(m.replace(/^claude-/, ''))}</th>`).join('')}</tr></thead>`;
+        const rows = recent.map((b) => `<tr><td>${esc(b.date)}</td><td class="usd">${fmtCost(b.usd)}</td>${order.map((m) => `<td>${b.byModel && b.byModel[m] ? fmtCost(b.byModel[m]) : '·'}</td>`).join('')}</tr>`).join('');
         document.getElementById('rollTable').innerHTML = head + `<tbody>${rows || '<tr><td class="meta">no spend recorded</td></tr>'}</tbody>`;
     } catch (err) {
-        document.getElementById('rollTable').innerHTML = `<tbody><tr><td class="meta">could not load: ${esc(err.message)}</td></tr></tbody>`;
+        document.getElementById('rollChart').innerHTML = `<span class="meta">could not load: ${esc(err.message)}</span>`;
     }
 }
 

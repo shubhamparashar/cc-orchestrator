@@ -2674,7 +2674,7 @@ async function loadTodos(refresh) {
         body.innerHTML = d.groups.map((g) => `<div class="todogroup">
             <div class="ghead"><a target="_blank" href="#/chat/${g.sessionId}" title="open chat">${esc(g.title)}</a>
                 <span class="meta">${esc(g.repo)}${g.status ? ' · ' + esc(statusLabel(g.status)) : ''}</span></div>
-            ${g.items.map((i) => `<div class="todoitem ${i.status}"><span class="st">${i.status === 'in_progress' ? '▸' : '○'}</span><span>${esc(i.subject)}</span></div>`).join('')}
+            ${g.items.map((i) => `<div class="todoitem ${i.status}"><span class="st">${i.status === 'in_progress' ? '▸' : '○'}</span><span>${esc(i.subject)}${i.also ? ` <span class="meta">(also in ${i.also} other session${i.also === 1 ? '' : 's'})</span>` : ''}</span></div>`).join('')}
         </div>`).join('') || '<span class="meta">no open todos in your recent sessions 🎉</span>';
     } catch (err) {
         body.innerHTML = `<span class="meta">could not load: ${esc(err.message)}</span>`;

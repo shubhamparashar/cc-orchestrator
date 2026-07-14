@@ -29,7 +29,7 @@ test('collects open items from the most recent sessions, skips completed and emp
 
 test('caps at 15 session groups and persists to disk', () => {
     fresh();
-    const many = Array.from({ length: 25 }, (_, i) => sess('s' + i, [{ subject: 'x', status: 'pending' }]));
+    const many = Array.from({ length: 25 }, (_, i) => sess('s' + i, [{ subject: 'task ' + i, status: 'pending' }]));
     const d = buildTodoDigest(many);
     assert.equal(d.groups.length, 15);
     const loaded = loadTodoDigest();
@@ -42,4 +42,16 @@ test('digestStale flips after 24h', () => {
     assert.equal(digestStale(d, 1000 + 1), false);
     assert.equal(digestStale(d, 1000 + 24 * 3600 * 1000), true);
     assert.equal(digestStale(null), true);
+});
+
+test('dedups the same subject across sessions, counting extras on the first', () => {
+    fresh();
+    const d = buildTodoDigest([
+        sess('new', [{ subject: 'Ship the thing', status: 'in_progress' }]),
+        sess('fork1', [{ subject: 'ship the thing', status: 'pending' }, { subject: 'unique', status: 'pending' }]),
+        sess('fork2', [{ subject: '  Ship   the thing ', status: 'pending' }]),
+    ]);
+    assert.deepEqual(d.groups.map((g) => g.sessionId), ['new', 'fork1']);
+    assert.equal(d.groups[0].items[0].also, 2);
+    assert.equal(d.openItems, 2);
 });

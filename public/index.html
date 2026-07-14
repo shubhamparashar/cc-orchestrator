@@ -562,14 +562,15 @@ body[data-route="chat"] .hero, body[data-route="chat"] main { display: none; }
 /* categorical series slots (dataviz-validated on both surfaces; fixed order, never cycled) */
 :root { --s1:#2a78d6; --s2:#1baf7a; --s3:#eda100; --s4:#008300; --s5:#4a3aa7; --s6:#e34948; --s-other:#8a8f9c; }
 :root[data-theme="dark"] { --s1:#3987e5; --s2:#199e70; --s3:#c98500; --s4:#008300; --s5:#9085e9; --s6:#e66767; }
-.rollchart { display: flex; align-items: flex-end; gap: 3px; height: 170px; padding: 6px 2px 0; position: relative; }
+.rollchart { display: flex; align-items: flex-end; gap: 3px; height: 170px; padding: 6px 2px 0; margin-top: 14px; }
 .rollchart .colstack { flex: 1 1 0; max-width: 24px; display: flex; flex-direction: column-reverse; height: 100%; justify-content: flex-start; cursor: default; }
 .rollchart .colstack .seg { width: 100%; margin-top: 2px; }
 .rollchart .colstack .seg:last-child { border-radius: 4px 4px 0 0; }
 .rollchart .colstack:hover .seg { filter: brightness(1.15); }
 .rollxaxis { display: flex; gap: 3px; padding: 4px 2px 0; }
 .rollxaxis span { flex: 1 1 0; max-width: 24px; font-size: 10px; color: var(--muted); text-align: center; overflow: visible; white-space: nowrap; }
-.rollymax { position: absolute; top: 0; right: 2px; font-size: 10px; color: var(--muted); }
+#costTabs { align-items: center; }
+#rollPeak { margin-left: auto; font-variant-numeric: tabular-nums; }
 .rolltip { position: fixed; z-index: 50; pointer-events: none; background: var(--card-up); border: 1px solid var(--line-strong);
     border-radius: var(--r-md); box-shadow: var(--elev-2); padding: 8px 11px; font-size: 12px; display: none; min-width: 150px; }
 .rolltip .t { font-weight: 700; margin-bottom: 4px; }
@@ -1172,6 +1173,7 @@ label.chk { font-size: var(--fs-sm); color: var(--muted); display: inline-flex; 
             <span class="tab active" data-window="day" tabindex="0" role="button">Day</span>
             <span class="tab" data-window="week" tabindex="0" role="button">Week</span>
             <span class="tab" data-window="month" tabindex="0" role="button">Month</span>
+            <span class="meta" id="rollPeak"></span>
         </div>
         <div class="rollchart" id="rollChart"><span class="meta">loading&hellip;</span></div>
         <div class="mixlegend" id="rollLegend"></div>
@@ -2545,7 +2547,8 @@ function renderRollChart(buckets, order) {
     const max = Math.max(...shown.map((b) => b.usd), 1);
     const H = 158;
     const colorOf = (m) => order.indexOf(m) < 6 ? `var(${SERIES_VARS[order.indexOf(m)]})` : 'var(--s-other)';
-    chart.innerHTML = `<span class="rollymax">peak ${fmtCost(max)}</span>` + shown.map((b, bi) => {
+    document.getElementById('rollPeak').textContent = `peak day ${fmtCost(max)}`;
+    chart.innerHTML = shown.map((b, bi) => {
         const parts = order.filter((m) => b.byModel?.[m] > 0).map((m) => ({ m, usd: b.byModel[m] }));
         const segs = parts.map(({ m, usd }) =>
             `<span class="seg" style="height:${Math.max(1, usd / max * H - 2)}px;background:${colorOf(m)}"></span>`).join('');

@@ -449,6 +449,7 @@ main { padding: var(--sp-3) clamp(14px,3vw,26px) 90px; max-width: 1380px; margin
 .msgs .a { color: var(--dim); }
 .msgs b { font-weight: 600; color: var(--accent-dk); margin-right: 3px; }
 .actions { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 2px; }
+.card .actions > .btn.chatlink { flex: 0 0 auto; padding-inline: 12px; }
 .badges { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .empty {
     grid-column: 1 / -1; color: var(--muted); text-align: center; padding: 48px 16px;
@@ -582,10 +583,13 @@ body[data-route="chat"] .hero, body[data-route="chat"] main { display: none; }
 .mixbar span { display: block; height: 100%; }
 .mixlegend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 11px; opacity: .8; }
 .mixlegend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
-.limitrow.big { margin: 12px 0; font-size: 13px; }
-.limitrow.big .limitlbl { flex: 0 0 210px; display: flex; flex-direction: column; }
+.limitrow.big { margin: 14px 0; font-size: 13px; }
+.limitrow.big .limitlbl { flex: 0 0 210px; display: flex; flex-direction: column; gap: 2px; }
+.limitrow.big .limitlbl .limitreset { flex: none; }
 .limitrow.big .limitbar { height: 10px; }
+.limitrow.big .limitpct { flex: 0 0 84px; white-space: nowrap; }
 .chip { display: inline-block; padding: 0 7px; border-radius: 999px; border: 1px solid var(--line-strong); font-size: 10px; opacity: .75; margin-right: 7px; }
+#attrWrap .limitlbl { flex: 0 0 235px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chatpagebody { display: flex; flex-direction: column; gap: 10px; }
 .plain { color: inherit; text-decoration: none; }
 .plain:hover { text-decoration: underline; }
@@ -1629,7 +1633,7 @@ function cardHtml(s) {
         </div>
         <div class="actions">
             <button class="btn${IS_REMOTE ? ' primary' : ''}" onclick="openChat('${s.sessionId}')" title="view the chat in this app">${icn('ic-message')} View chat</button>
-            <a class="btn" target="_blank" rel="noopener" href="#/chat/${s.sessionId}" title="open this chat in a new tab">&nearr;</a>
+            <a class="btn chatlink" target="_blank" rel="noopener" href="#/chat/${s.sessionId}" title="open this chat in a new tab">&nearr;</a>
             <button class="btn" onclick="openSend('${s.sessionId}', false)">${icn('ic-send')} Send prompt</button>
             <div class="menuwrap">
                 <button class="btn ghost" title="More actions" aria-label="more actions" aria-haspopup="menu" onclick="toggleCardMenu(event)">${icn('ic-more', 15)}</button>
@@ -2402,7 +2406,7 @@ async function loadLimits() {
         }).join('');
         const staleNote = error ? `<div class="meta">showing cached values — last fetch failed: ${esc(error)}</div>` : '';
         const age = fetchedAt ? Math.round((Date.now() - fetchedAt) / 1000) : null;
-        const updated = age != null ? `<div class="meta" style="margin-top:6px">Last updated ${age < 10 ? 'just now' : age < 90 ? age + 's ago' : Math.round(age / 60) + ' min ago'}</div>` : '';
+        const updated = age != null ? `<div class="meta" style="margin-top:6px">Last updated ${age < 10 ? 'just now' : age < 60 ? age + 's ago' : Math.round(age / 60) + ' min ago'}</div>` : '';
         const tier = planLabel(plan);
         el.innerHTML = `<h3>Plan usage limits ${tier ? `<span class="chip">${esc(tier)}</span>` : ''}<span class="meta">live, from your Claude subscription</span></h3>${gauges || '<span class="meta">no limits reported</span>'}${staleNote}${updated}`;
     } catch (err) {
@@ -2441,8 +2445,7 @@ async function loadModelUsage() {
     }
 }
 
-// Palette for the model-mix bar: gold for the top model, then muted hues.
-const MIX_HUES = [42, 210, 280, 150, 0, 180];
+const mixColor = (i) => i < 6 ? `var(${SERIES_VARS[i]})` : 'var(--s-other)';
 
 function renderOverview() {
     if (!usageModels) return;
@@ -2464,8 +2467,8 @@ function renderOverview() {
     const total = r.totalUsd || 1;
     const mix = (r.models || []).filter((m) => m.usd > 0);
     document.getElementById('modelMix').innerHTML = mix.length ? `
-        <div class="mixbar">${mix.map((m, i) => `<span style="width:${(m.usd / total * 100).toFixed(2)}%;background:hsl(${MIX_HUES[i % MIX_HUES.length]} 60% 55%)" title="${esc(m.model)} ${fmtCost(m.usd)}"></span>`).join('')}</div>
-        <div class="mixlegend">${mix.map((m, i) => `<span><i style="background:hsl(${MIX_HUES[i % MIX_HUES.length]} 60% 55%)"></i>${esc(m.model.replace(/^claude-/, ''))} ${Math.round(m.usd / total * 100)}%</span>`).join('')}</div>` : '';
+        <div class="mixbar">${mix.map((m, i) => `<span style="width:${(m.usd / total * 100).toFixed(2)}%;background:${mixColor(i)}" title="${esc(m.model)} ${fmtCost(m.usd)}"></span>`).join('')}</div>
+        <div class="mixlegend">${mix.map((m, i) => `<span><i style="background:${mixColor(i)}"></i>${esc(m.model.replace(/^claude-/, ''))} ${m.usd / total < 0.01 ? '<1' : Math.round(m.usd / total * 100)}%</span>`).join('')}</div>` : '';
 }
 
 function renderSessCost() {
@@ -2492,7 +2495,7 @@ async function loadAttribution() {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const a = await res.json();
         const bar = (e, chip) => `<div class="limitrow">
-            <span class="limitlbl"><span class="chip">${chip}</span>${esc(e.key)}</span>
+            <span class="limitlbl" title="${esc(e.key)}"><span class="chip">${chip}</span>${esc(e.key)}</span>
             <span class="limitbar"><span class="limitfill" style="width:${Math.min(e.pct, 100)}%"></span></span>
             <span class="limitpct">${e.pct}%</span>
             <span class="meta limitreset usd">${fmtCost(e.usd)}</span>

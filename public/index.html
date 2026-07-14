@@ -577,8 +577,6 @@ body[data-route="chat"] .hero, body[data-route="chat"] main { display: none; }
 .rolltip .r { display: flex; gap: 8px; justify-content: space-between; align-items: center; }
 .rolltip .r i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; }
 .rolltip .r .usd { font-variant-numeric: tabular-nums; }
-.rolldetails { margin-top: 10px; }
-.rolldetails summary { cursor: pointer; }
 
 .mixbar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; border: 1px solid var(--line-strong); }
 .mixbar span { display: block; height: 100%; }
@@ -1178,9 +1176,7 @@ label.chk { font-size: var(--fs-sm); color: var(--muted); display: inline-flex; 
         <div class="rollchart" id="rollChart"><span class="meta">loading&hellip;</span></div>
         <div class="mixlegend" id="rollLegend"></div>
         <p class="meta" style="margin:8px 0 0">UTC buckets &middot; cumulative API spend &middot; deleted days served from the local ledger</p>
-        <details class="rolldetails"><summary class="meta">data table</summary>
-            <div class="rollwrap" style="margin-top:8px"><table class="rolltable" id="rollTable"><tbody></tbody></table></div>
-        </details>
+        <div class="rollwrap" style="margin-top:12px"><table class="rolltable" id="rollTable"><tbody></tbody></table></div>
     </section>
 </section>
 

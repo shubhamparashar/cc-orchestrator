@@ -1340,6 +1340,7 @@ label.chk { font-size: var(--fs-sm); color: var(--muted); display: inline-flex; 
     </div>
     <div class="dlgrow">
         <span class="meta grow" id="liveViewStatus"></span>
+        <button class="btn" id="liveChatBtn" hidden><svg class="icon" width="13" height="13"><use href="#ic-message"/></svg> Open chat</button>
         <button class="btn danger" id="liveStopBtn">Stop</button>
         <button class="btn" onclick="closeDlg('liveViewDialog')">Close</button>
     </div>
@@ -2892,7 +2893,12 @@ function populateNewLiveCwds() {
     for (const s of state.sessions) {
         if (s.cwd && !seen.has(s.cwd)) seen.set(s.cwd, { repo: s.repo, wt: s.isWorktree });
     }
-    sel.innerHTML = [...seen]
+    // Default workspace: the common "<home>/repo" root, derived from known cwds
+    // so the client never guesses the home dir. Listed (and selected) first.
+    const root = [...seen.keys()].map((c) => c.match(/^(.*?\/repo)(\/|$)/)?.[1]).find(Boolean);
+    if (root && !seen.has(root)) seen.set(root, { repo: root.replace(/^.*\//, '~/') + ' (default workspace)', wt: false });
+    const ordered = [...seen].sort(([a], [b]) => (a === root ? -1 : b === root ? 1 : 0));
+    sel.innerHTML = ordered
         .map(([cwd, m]) => `<option value="${esc(cwd)}">${esc(m.repo || cwd)}${m.wt ? ' · worktree' : ''}</option>`)
         .join('') || '<option value="">(no known repos — type a path below)</option>';
 }
@@ -3024,6 +3030,7 @@ function openLiveView(liveId) {
     out.textContent = '';
     out.classList.toggle('streaming', !!(e && e.status === 'running'));
     document.getElementById('liveViewStatus').textContent = e && e.status !== 'running' ? statusOfLive(e) : '● live';
+    updateLiveChatBtn(e);
     if (!document.getElementById('liveViewDialog').open) withVT(() => document.getElementById('liveViewDialog').showModal());
 }
 
@@ -3065,10 +3072,30 @@ async function loadLive() {
         if (liveViewId && state.live[liveViewId]) {
             document.getElementById('liveViewStatus').textContent = statusOfLive(state.live[liveViewId]);
             document.getElementById('liveOut').classList.toggle('streaming', state.live[liveViewId].status === 'running');
+            updateLiveChatBtn(state.live[liveViewId]);
         }
     } catch {
         // best-effort: the strip just keeps its last state
     }
+}
+
+// The chat transcript for a live agent: a resumed session is known directly;
+// a NEW session's claude UUID is discovered from the session list — the newest
+// session in the live entry's cwd that started after the agent did.
+function liveChatTarget(e) {
+    if (!e) return null;
+    if (e.sessionId) return e.sessionId;
+    const t = Date.parse(e.startedAt || 0) - 15000;
+    const cands = state.sessions.filter((s) => s.cwd === e.cwd && Date.parse(s.startedAt || s.mtime || 0) >= t);
+    cands.sort((a, b) => Date.parse(b.startedAt || b.mtime || 0) - Date.parse(a.startedAt || a.mtime || 0));
+    return cands[0]?.sessionId || null;
+}
+
+function updateLiveChatBtn(e) {
+    const btn = document.getElementById('liveChatBtn');
+    const target = liveChatTarget(e);
+    btn.hidden = !target;
+    btn.onclick = target ? () => { closeDlg('liveViewDialog'); location.hash = '#/chat/' + target; } : null;
 }
 
 let liveLastHtml = '';

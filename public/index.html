@@ -568,7 +568,7 @@ body[data-route="chat"] .hero, body[data-route="chat"] main { display: none; }
 .rollchart .colstack:hover .seg { filter: brightness(1.15); }
 .rollxaxis { display: flex; gap: 3px; padding: 4px 2px 0; }
 .rollxaxis span { flex: 1 1 0; max-width: 24px; font-size: 10px; color: var(--muted); text-align: center; overflow: visible; white-space: nowrap; }
-.rollymax { position: absolute; top: -6px; left: 2px; font-size: 10px; color: var(--muted); }
+.rollymax { position: absolute; top: 0; right: 2px; font-size: 10px; color: var(--muted); }
 .rolltip { position: fixed; z-index: 50; pointer-events: none; background: var(--card-up); border: 1px solid var(--line-strong);
     border-radius: var(--r-md); box-shadow: var(--elev-2); padding: 8px 11px; font-size: 12px; display: none; min-width: 150px; }
 .rolltip .t { font-weight: 700; margin-bottom: 4px; }
@@ -2542,7 +2542,7 @@ function renderRollChart(buckets, order) {
     const max = Math.max(...shown.map((b) => b.usd), 1);
     const H = 158;
     const colorOf = (m) => order.indexOf(m) < 6 ? `var(${SERIES_VARS[order.indexOf(m)]})` : 'var(--s-other)';
-    chart.innerHTML = `<span class="rollymax">${fmtCost(max)}</span>` + shown.map((b, bi) => {
+    chart.innerHTML = `<span class="rollymax">peak ${fmtCost(max)}</span>` + shown.map((b, bi) => {
         const parts = order.filter((m) => b.byModel?.[m] > 0).map((m) => ({ m, usd: b.byModel[m] }));
         const segs = parts.map(({ m, usd }) =>
             `<span class="seg" style="height:${Math.max(1, usd / max * H - 2)}px;background:${colorOf(m)}"></span>`).join('');
@@ -2599,8 +2599,12 @@ async function loadRollup() {
             `Total <span class="totalcost">${fmtCost(r.totalUsd)}</span> across ${buckets.length} ${costWindow}${buckets.length === 1 ? '' : 's'} (UTC)`;
         renderRollChart(buckets, order);
         const recent = buckets.slice().reverse();
-        const head = `<thead><tr><th>${costWindow}</th><th>total</th>${order.map((m) => `<th title="${esc(m)}">${esc(m.replace(/^claude-/, ''))}</th>`).join('')}</tr></thead>`;
-        const rows = recent.map((b) => `<tr><td>${esc(b.date)}</td><td class="usd">${fmtCost(b.usd)}</td>${order.map((m) => `<td>${b.byModel && b.byModel[m] ? fmtCost(b.byModel[m]) : '·'}</td>`).join('')}</tr>`).join('');
+        const head = `<thead><tr><th>${costWindow}</th><th>total</th><th>top model</th><th>share</th></tr></thead>`;
+        const rows = recent.map((b) => {
+            const [top, topUsd] = Object.entries(b.byModel || {}).sort((a, z) => z[1] - a[1])[0] || [null, 0];
+            const share = b.usd > 0 && top ? Math.round(topUsd / b.usd * 100) + '%' : '·';
+            return `<tr><td>${esc(b.date)}</td><td class="usd">${fmtCost(b.usd)}</td><td>${top ? esc(top.replace(/^claude-/, '')) + ' <span class="meta">' + fmtCost(topUsd) + '</span>' : '·'}</td><td>${share}</td></tr>`;
+        }).join('');
         document.getElementById('rollTable').innerHTML = head + `<tbody>${rows || '<tr><td class="meta">no spend recorded</td></tr>'}</tbody>`;
     } catch (err) {
         document.getElementById('rollChart').innerHTML = `<span class="meta">could not load: ${esc(err.message)}</span>`;

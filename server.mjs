@@ -11,6 +11,7 @@ import { sessionUsageByModel, pruneUsageCache, usageByDateModel, rollupFromDaily
 import { bankAndDeletedUsd, bankAndMergeDaily } from './lib/costLedger.mjs';
 import { subscriptionLimits } from './lib/limits.mjs';
 import { usageAttribution } from './lib/attribution.mjs';
+import { buildTodoDigest, digestStale, loadTodoDigest } from './lib/todoDigest.mjs';
 import {
     subagentUsageByModel, subagentDateModel, subagentFilesFor, pruneSubagentCaches,
 } from './lib/subagents.mjs';
@@ -608,6 +609,14 @@ const handler = async (req, res) => {
             const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 100, 1), 500);
             return sendJson(res, 200, await recentPrompts({ q, limit }));
         }
+        if (req.method === 'GET' && url.pathname === '/api/todos') {
+            let digest = loadTodoDigest();
+            if (url.searchParams.get('refresh') === '1' || digestStale(digest)) {
+                const sessions = await getSessionsShared();
+                digest = buildTodoDigest(sessions);
+            }
+            return sendJson(res, 200, digest);
+        }
         if (req.method === 'GET' && url.pathname === '/api/usage/limits') {
             const { fetchedAt, data, plan, error } = await subscriptionLimits();
             return sendJson(res, 200, { fetchedAt, error, plan, data });
@@ -884,6 +893,10 @@ server.listen(PORT, HOST, () => {
     const bankDaily = () => getSessionsShared().then((s) => costRollup(s, 'day')).catch(() => {});
     bankDaily();
     setInterval(bankDaily, 60 * 60 * 1000);
+    // Daily todo digest refresh (also rebuilt on-demand when /api/todos finds it stale).
+    const refreshTodos = () => getSessionsShared().then((s) => buildTodoDigest(s)).catch(() => {});
+    if (digestStale(loadTodoDigest())) refreshTodos();
+    setInterval(refreshTodos, 24 * 60 * 60 * 1000);
     // AFK alerts: fire OS notifications for waiting-session digests / budget
     // crossings. Opt-in — only scheduled when the config enables it.
     if (cfg.alerts.enabled) {

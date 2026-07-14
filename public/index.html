@@ -547,7 +547,16 @@ main { padding: var(--sp-3) clamp(14px,3vw,26px) 90px; max-width: 1380px; margin
 
 /* ── full pages (#/usage, #/chat/<id>) ─────────────────────── */
 body[data-route="usage"] .hero, body[data-route="usage"] main,
+body[data-route="todos"] .hero, body[data-route="todos"] main,
 body[data-route="chat"] .hero, body[data-route="chat"] main { display: none; }
+.todogroup { border: 1px solid var(--line-strong); background: var(--inner); border-radius: var(--r-md); padding: 12px 14px; margin-bottom: 12px; }
+.todogroup .ghead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.todogroup .ghead a { color: inherit; text-decoration: none; font-weight: 600; }
+.todogroup .ghead a:hover { text-decoration: underline; }
+.todoitem { display: flex; gap: 8px; padding: 3px 0; font-size: 13px; align-items: baseline; }
+.todoitem .st { flex: 0 0 14px; text-align: center; }
+.todoitem.in_progress .st { color: var(--accent-dk); }
+.todoitem .st { color: var(--muted); }
 .page { max-width: 980px; margin: 20px auto 60px; padding: 0 18px; }
 .pagehead { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
 .pagehead h2 { margin: 0; font-size: 20px; display: flex; align-items: center; gap: 8px; }
@@ -1034,6 +1043,9 @@ label.chk { font-size: var(--fs-sm); color: var(--muted); display: inline-flex; 
         <button class="btn ghost" id="costBtn" title="Usage: subscription limits, per-model cost/tokens, per-session split, cost over time">
             <svg class="icon" width="15" height="15"><use href="#ic-chart"/></svg> <span class="lbl">usage</span>
         </button>
+        <button class="btn ghost" id="todoBtn" title="Open todo items from your most recent sessions (refreshed daily)">
+            <svg class="icon" width="15" height="15"><use href="#ic-check"/></svg> <span class="lbl">todos</span>
+        </button>
         <button class="btn ghost" id="histBtn" title="Prompt history across all sessions">
             <svg class="icon" width="15" height="15"><use href="#ic-message"/></svg> <span class="lbl">prompts</span>
         </button>
@@ -1200,6 +1212,16 @@ label.chk { font-size: var(--fs-sm); color: var(--muted); display: inline-flex; 
         <p class="meta" style="margin:8px 0 0">UTC buckets &middot; cumulative API spend &middot; deleted days served from the local ledger</p>
         <div class="rollwrap" style="margin-top:12px"><table class="rolltable" id="rollTable"><tbody></tbody></table></div>
     </section>
+</section>
+
+<section id="todoPage" class="page" hidden>
+    <div class="pagehead">
+        <a class="btn ghost" href="#/">&larr; Sessions</a>
+        <h2><svg class="icon" width="18" height="18"><use href="#ic-check"/></svg> Todos</h2>
+        <span class="meta" id="todoMeta"></span>
+        <button class="btn" id="todoRefresh" style="margin-left:auto">Refresh</button>
+    </div>
+    <div id="todoBody"><span class="meta"><span class="spin"></span> loading&hellip;</span></div>
 </section>
 
 <section id="chatPage" class="page" hidden>
@@ -2366,9 +2388,10 @@ let chatPageTimer = null;
 
 function route() {
     const m = location.hash.match(/^#\/chat\/([0-9a-f-]{36})$/i);
-    const r = location.hash.startsWith('#/usage') ? 'usage' : m ? 'chat' : 'home';
+    const r = location.hash.startsWith('#/usage') ? 'usage' : location.hash.startsWith('#/todos') ? 'todos' : m ? 'chat' : 'home';
     document.body.dataset.route = r;
     document.getElementById('usagePage').hidden = r !== 'usage';
+    document.getElementById('todoPage').hidden = r !== 'todos';
     document.getElementById('chatPage').hidden = r !== 'chat';
     clearInterval(chatPageTimer);
     clearInterval(limitsTimer);
@@ -2377,6 +2400,7 @@ function route() {
         renderUsagePage();
         limitsTimer = setInterval(loadLimits, 60_000);
     }
+    if (r === 'todos') loadTodos();
     if (r === 'chat') {
         chatPageId = m[1];
         document.getElementById('chatPageBody').innerHTML = '<p class="meta"><span class="spin"></span> loading&hellip;</p>';
@@ -2636,6 +2660,27 @@ async function loadRollup() {
     }
 }
 
+/* ── todos page (#/todos): open items from recent sessions ── */
+async function loadTodos(refresh) {
+    const body = document.getElementById('todoBody');
+    if (refresh) body.innerHTML = '<span class="meta"><span class="spin"></span> rebuilding&hellip;</span>';
+    try {
+        const res = await fetch('/api/todos' + (refresh ? '?refresh=1' : ''), { signal: AbortSignal.timeout(30000) });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const d = await res.json();
+        const age = d.generatedAt ? fmtDur(Date.now() - d.generatedAt) : '?';
+        document.getElementById('todoMeta').textContent =
+            `${d.openItems} open item${d.openItems === 1 ? '' : 's'} across ${d.groups.length} sessions · refreshed ${age} ago · daily · local only`;
+        body.innerHTML = d.groups.map((g) => `<div class="todogroup">
+            <div class="ghead"><a target="_blank" href="#/chat/${g.sessionId}" title="open chat">${esc(g.title)}</a>
+                <span class="meta">${esc(g.repo)}${g.status ? ' · ' + esc(statusLabel(g.status)) : ''}</span></div>
+            ${g.items.map((i) => `<div class="todoitem ${i.status}"><span class="st">${i.status === 'in_progress' ? '▸' : '○'}</span><span>${esc(i.subject)}</span></div>`).join('')}
+        </div>`).join('') || '<span class="meta">no open todos in your recent sessions 🎉</span>';
+    } catch (err) {
+        body.innerHTML = `<span class="meta">could not load: ${esc(err.message)}</span>`;
+    }
+}
+
 /* ── chat page (#/chat/<id>) ───────────────────────────────── */
 async function loadChatPage() {
     const id = chatPageId;
@@ -2660,6 +2705,8 @@ async function loadChatPage() {
 }
 
 document.getElementById('costBtn').onclick = () => { location.hash = '#/usage'; };
+document.getElementById('todoBtn').onclick = () => { location.hash = '#/todos'; };
+document.getElementById('todoRefresh').onclick = () => loadTodos(true);
 document.querySelectorAll('#costTabs .tab').forEach((t) => {
     t.onclick = () => setCostWindow(t.dataset.window);
     t.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCostWindow(t.dataset.window); } };

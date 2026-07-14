@@ -10,6 +10,7 @@ import { desktopSessions, DESKTOP_SESSIONS_DIR } from './lib/desktop.mjs';
 import { sessionUsageByModel, pruneUsageCache, usageByDateModel, rollupFromDaily, rollupToCsv, mergeUsageByModel } from './lib/cost.mjs';
 import { bankAndDeletedUsd, bankAndMergeDaily } from './lib/costLedger.mjs';
 import { subscriptionLimits } from './lib/limits.mjs';
+import { usageAttribution } from './lib/attribution.mjs';
 import {
     subagentUsageByModel, subagentDateModel, subagentFilesFor, pruneSubagentCaches,
 } from './lib/subagents.mjs';
@@ -610,6 +611,12 @@ const handler = async (req, res) => {
         if (req.method === 'GET' && url.pathname === '/api/usage/limits') {
             const { fetchedAt, data, error } = await subscriptionLimits();
             return sendJson(res, 200, { fetchedAt, error, data });
+        }
+        if (req.method === 'GET' && url.pathname === '/api/usage/attribution') {
+            const hours = Math.min(Math.max(Number(url.searchParams.get('hours')) || 24, 1), 24 * 30);
+            const sessions = await getSessionsShared();
+            const pricing = loadPricing();
+            return sendJson(res, 200, await usageAttribution({ sessions, projectsDir: PROJECTS_DIR, hours, pricing, mapLimit }));
         }
         if (req.method === 'GET' && url.pathname === '/api/usage/models') {
             // Lifetime-of-retained-transcripts token+cost totals per model, with the

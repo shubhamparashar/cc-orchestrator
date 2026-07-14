@@ -609,8 +609,8 @@ const handler = async (req, res) => {
             return sendJson(res, 200, await recentPrompts({ q, limit }));
         }
         if (req.method === 'GET' && url.pathname === '/api/usage/limits') {
-            const { fetchedAt, data, error } = await subscriptionLimits();
-            return sendJson(res, 200, { fetchedAt, error, data });
+            const { fetchedAt, data, plan, error } = await subscriptionLimits();
+            return sendJson(res, 200, { fetchedAt, error, plan, data });
         }
         if (req.method === 'GET' && url.pathname === '/api/usage/attribution') {
             const hours = Math.min(Math.max(Number(url.searchParams.get('hours')) || 24, 1), 24 * 30);

@@ -10,7 +10,7 @@ test('caches a successful fetch within the TTL', async () => {
     resetLimitsCache();
     let calls = 0;
     const fetchFn = async () => { calls++; return { ok: true, json: async () => ({ limits: [] }) }; };
-    const deps = { getToken: async () => 't', fetchFn, now: () => 1000 };
+    const deps = { getCreds: async () => ({ token: 't' }), fetchFn, now: () => 1000 };
     const a = await subscriptionLimits(deps);
     const b = await subscriptionLimits(deps);
     assert.equal(calls, 1);
@@ -21,7 +21,7 @@ test('caches a successful fetch within the TTL', async () => {
 test('serves stale data with the error on fetch failure', async () => {
     resetLimitsCache();
     let t = 0;
-    const deps = { getToken: async () => 't', now: () => t };
+    const deps = { getCreds: async () => ({ token: 't' }), now: () => t };
     await subscriptionLimits({ ...deps, fetchFn: ok({ limits: [1] }) });
     t = 10 * 60 * 1000;
     const r = await subscriptionLimits({ ...deps, fetchFn: fail });
@@ -31,7 +31,7 @@ test('serves stale data with the error on fetch failure', async () => {
 
 test('retries after failure when nothing is cached yet', async () => {
     resetLimitsCache();
-    const deps = { getToken: async () => 't', now: () => 0 };
+    const deps = { getCreds: async () => ({ token: 't' }), now: () => 0 };
     const r1 = await subscriptionLimits({ ...deps, fetchFn: fail });
     assert.equal(r1.data, null);
     const r2 = await subscriptionLimits({ ...deps, fetchFn: ok({ limits: [2] }) });

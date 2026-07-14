@@ -2346,8 +2346,12 @@ function route() {
     document.getElementById('usagePage').hidden = r !== 'usage';
     document.getElementById('chatPage').hidden = r !== 'chat';
     clearInterval(chatPageTimer);
+    clearInterval(limitsTimer);
     chatPageId = null;
-    if (r === 'usage') renderUsagePage();
+    if (r === 'usage') {
+        renderUsagePage();
+        limitsTimer = setInterval(loadLimits, 60_000);
+    }
     if (r === 'chat') {
         chatPageId = m[1];
         document.getElementById('chatPageBody').innerHTML = '<p class="meta"><span class="spin"></span> loading&hellip;</p>';
@@ -2367,29 +2371,42 @@ function renderUsagePage() {
 }
 
 /* ── usage page: subscription limit gauges ─────────────────── */
+let limitsTimer = null;
+
+// Plan tier label, e.g. { subscriptionType: "max", rateLimitTier: "default_claude_max_20x" } → "Max (20x)".
+function planLabel(plan) {
+    if (!plan?.subscriptionType) return '';
+    const name = plan.subscriptionType[0].toUpperCase() + plan.subscriptionType.slice(1);
+    const mult = /(\d+x)/.exec(plan.rateLimitTier || '');
+    return mult ? `${name} (${mult[1]})` : name;
+}
+
 async function loadLimits() {
     const el = document.getElementById('limitsWrap');
     try {
         const res = await fetch('/api/usage/limits', { signal: AbortSignal.timeout(15000) });
         if (!res.ok) throw new Error('HTTP ' + res.status);
-        const { data, error } = await res.json();
+        const { data, plan, error, fetchedAt } = await res.json();
         if (!data) throw new Error(error || 'no data');
         const gauges = (data.limits || []).map((l) => {
-            const label = l.kind === 'session' ? '5-hour limit'
-                : l.scope?.model?.display_name ? `Weekly limit · ${l.scope.model.display_name}`
-                : 'Weekly limit · all models';
+            const label = l.kind === 'session' ? 'Current session'
+                : l.scope?.model?.display_name ? `Weekly · ${l.scope.model.display_name}`
+                : 'Weekly · all models';
             const resets = l.resets_at ? fmtResets(l.resets_at) : '';
             const cls = l.percent >= 90 ? 'crit' : l.percent >= 75 ? 'warn' : '';
             return `<div class="limitrow big">
                 <span class="limitlbl">${esc(label)}<span class="meta limitreset">Resets ${esc(resets)}</span></span>
                 <span class="limitbar"><span class="limitfill ${cls}" style="width:${Math.min(l.percent, 100)}%"></span></span>
-                <span class="limitpct ${cls}">${l.percent}%</span>
+                <span class="limitpct ${cls}">${l.percent}% used</span>
             </div>`;
         }).join('');
         const staleNote = error ? `<div class="meta">showing cached values — last fetch failed: ${esc(error)}</div>` : '';
-        el.innerHTML = `<h3>Limits <span class="meta">live, from your Claude subscription</span></h3>${gauges || '<span class="meta">no limits reported</span>'}${staleNote}`;
+        const age = fetchedAt ? Math.round((Date.now() - fetchedAt) / 1000) : null;
+        const updated = age != null ? `<div class="meta" style="margin-top:6px">Last updated ${age < 10 ? 'just now' : age < 90 ? age + 's ago' : Math.round(age / 60) + ' min ago'}</div>` : '';
+        const tier = planLabel(plan);
+        el.innerHTML = `<h3>Plan usage limits ${tier ? `<span class="chip">${esc(tier)}</span>` : ''}<span class="meta">live, from your Claude subscription</span></h3>${gauges || '<span class="meta">no limits reported</span>'}${staleNote}${updated}`;
     } catch (err) {
-        el.innerHTML = `<h3>Limits</h3><span class="meta">unavailable: ${esc(err.message)}</span>`;
+        el.innerHTML = `<h3>Plan usage limits</h3><span class="meta">unavailable: ${esc(err.message)}</span>`;
     }
 }
 

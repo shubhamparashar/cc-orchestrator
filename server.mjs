@@ -8,6 +8,8 @@ import { scanSessions, PROJECTS_DIR, readSlice, parseLines, textOfContent, isSyn
 import { liveSessions, SESSIONS_DIR } from './lib/live.mjs';
 import { desktopSessions, DESKTOP_SESSIONS_DIR } from './lib/desktop.mjs';
 import { sessionUsageByModel, pruneUsageCache, usageByDateModel, rollupFromDaily, rollupToCsv, mergeUsageByModel } from './lib/cost.mjs';
+import { bankAndDeletedUsd, bankAndMergeDaily } from './lib/costLedger.mjs';
+import { subscriptionLimits } from './lib/limits.mjs';
 import {
     subagentUsageByModel, subagentDateModel, subagentFilesFor, pruneSubagentCaches,
 } from './lib/subagents.mjs';
@@ -117,11 +119,13 @@ async function attachCost(sessions) {
             s.subagents = subFiles.length;
             const subSummary = costSummary(sub, pricing);
             s.subagentCost = subSummary.totalUsd;
+            s.costOwn = costSummary(own, pricing).totalUsd;
             s.cost = costSummary(byModel, pricing);
         } catch {
             s.cost = null;
             s.subagents = 0;
             s.subagentCost = 0;
+            s.costOwn = 0;
         }
     });
     pruneSubagentCaches(liveSubPaths);
@@ -169,8 +173,14 @@ async function getSessions() {
     const sessions = await scanSessions({ liveBySession, desktopBySession });
     for (const s of sessions) s.hasContext = ctxIds.has(s.sessionId);
     await Promise.all([attachCost(sessions), attachTasks(sessions), attachHealth(sessions)]);
+    lastDeletedUsd = bankAndDeletedUsd(sessions.map((s) => ({ sessionId: s.sessionId, usd: s.cost?.totalUsd || 0 })));
     return sessions;
 }
+
+// Banked spend for sessions no longer on disk (see costLedger). Refreshed by every
+// getSessions() scan and shipped alongside the live list so the header total stays
+// a true lifetime figure even after a session is deleted.
+let lastDeletedUsd = 0;
 
 // Concurrent requests share one scan; results staler than one scan-duration are fine here.
 let inFlightScan = null;
@@ -206,7 +216,14 @@ async function costRollup(sessions, window) {
         return [own, sub];
     });
     const dailyMaps = perSession.flat();
-    return rollupFromDaily(dailyMaps, { window, pricing });
+    const rollup = rollupFromDaily(dailyMaps, { window, pricing });
+    // Day buckets are banked to disk and merged back so a day whose transcripts
+    // were auto-deleted keeps its spend in the view (week/month stay live-only).
+    if (window === 'day') {
+        const merged = bankAndMergeDaily(rollup.buckets);
+        return { ...rollup, buckets: merged.buckets, totalUsd: merged.totalUsd };
+    }
+    return rollup;
 }
 
 // Today's (UTC) total spend in USD across all scanned sessions, for the budget alert.
@@ -237,7 +254,7 @@ function scheduleRefresh() {
         if (!sseClients.size) return;
         try {
             const sessions = await getSessionsShared();
-            broadcast('sessions', sessions);
+            broadcast('sessions', { sessions, deletedUsd: lastDeletedUsd });
         } catch {
             broadcast('refresh', { at: Date.now() });
         }
@@ -563,7 +580,8 @@ const handler = async (req, res) => {
             return sendJson(res, 200, body);
         }
         if (req.method === 'GET' && url.pathname === '/api/sessions') {
-            return sendJson(res, 200, await getSessionsShared());
+            const sessions = await getSessionsShared();
+            return sendJson(res, 200, { sessions, deletedUsd: lastDeletedUsd });
         }
         if (req.method === 'GET' && url.pathname === '/api/jobs') {
             return sendJson(res, 200, listJobs());
@@ -588,6 +606,25 @@ const handler = async (req, res) => {
             const q = url.searchParams.get('q') || '';
             const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 100, 1), 500);
             return sendJson(res, 200, await recentPrompts({ q, limit }));
+        }
+        if (req.method === 'GET' && url.pathname === '/api/usage/limits') {
+            const { fetchedAt, data, error } = await subscriptionLimits();
+            return sendJson(res, 200, { fetchedAt, error, data });
+        }
+        if (req.method === 'GET' && url.pathname === '/api/usage/models') {
+            // Lifetime-of-retained-transcripts token+cost totals per model, with the
+            // per-type token split (input/output/cache) the priced summary drops.
+            const sessions = await getSessionsShared();
+            const pricing = loadPricing();
+            const merged = {};
+            await mapLimit(sessions, 8, async (s) => {
+                const own = await sessionUsageByModel(join(PROJECTS_DIR, s.projectDir, `${s.sessionId}.jsonl`)).catch(() => ({}));
+                const sub = await subagentUsageByModel(PROJECTS_DIR, s.projectDir, s.sessionId).catch(() => ({}));
+                mergeUsageByModel(merged, own);
+                mergeUsageByModel(merged, sub);
+            });
+            const summary = costSummary(merged, pricing);
+            return sendJson(res, 200, { totalUsd: summary.totalUsd, pricedKnown: summary.pricedKnown, deletedUsd: lastDeletedUsd, models: summary.byModel });
         }
         if (req.method === 'GET' && url.pathname === '/api/cost/rollup') {
             const w = url.searchParams.get('window');
@@ -835,6 +872,11 @@ server.listen(PORT, HOST, () => {
     };
     reindex().then((e) => { lastIndexFailure = null; log.info(`session index: ${e.length} sessions`); }).catch(logIndexFailure);
     setInterval(() => { reindex().then(() => { lastIndexFailure = null; }).catch(logIndexFailure); }, 5 * 60 * 1000);
+    // Hourly daily-spend banking so days get persisted even if the usage dialog
+    // is never opened before their transcripts age out.
+    const bankDaily = () => getSessionsShared().then((s) => costRollup(s, 'day')).catch(() => {});
+    bankDaily();
+    setInterval(bankDaily, 60 * 60 * 1000);
     // AFK alerts: fire OS notifications for waiting-session digests / budget
     // crossings. Opt-in — only scheduled when the config enables it.
     if (cfg.alerts.enabled) {

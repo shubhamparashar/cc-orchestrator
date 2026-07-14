@@ -538,6 +538,19 @@ main { padding: var(--sp-3) clamp(14px,3vw,26px) 90px; max-width: 1380px; margin
 .rolltable th { color: var(--muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
 .rolltable td.usd { color: var(--gold); font-weight: 600; }
 .rollwrap { max-height: 48vh; overflow: auto; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--inner); }
+.usage-section { margin-bottom: 14px; }
+.usage-section .rollwrap { max-height: 26vh; }
+.usage-title { font-weight: 600; font-size: 13px; margin: 2px 0 6px; }
+.limitrow { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 12px; }
+.limitlbl { flex: 0 0 150px; }
+.limitbar { flex: 1; height: 7px; border-radius: 4px; background: var(--inner); border: 1px solid var(--line-strong); overflow: hidden; }
+.limitfill { display: block; height: 100%; background: var(--gold); }
+.limitfill.warn { background: orange; }
+.limitfill.crit { background: crimson; }
+.limitpct { flex: 0 0 38px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.limitpct.warn { color: orange; }
+.limitpct.crit { color: crimson; }
+.limitreset { flex: 0 0 90px; }
 
 /* ── prompt-history palette (A6) ─────────────────────────── */
 .histlist { max-height: 52vh; overflow: auto; margin: 10px 0 0; display: flex; flex-direction: column; gap: 5px; }
@@ -927,8 +940,8 @@ label.chk { font-size: var(--fs-sm); color: var(--muted); display: inline-flex; 
         <select id="repoFilter"><option value="">all repos</option></select>
     </div>
     <div class="hdr-tools" id="hdrTools">
-        <button class="btn ghost" id="costBtn" title="Cost over time (day/week/month) + export">
-            <svg class="icon" width="15" height="15"><use href="#ic-chart"/></svg> <span class="lbl">cost</span>
+        <button class="btn ghost" id="costBtn" title="Usage: subscription limits, per-model cost/tokens, per-session split, cost over time">
+            <svg class="icon" width="15" height="15"><use href="#ic-chart"/></svg> <span class="lbl">usage</span>
         </button>
         <button class="btn ghost" id="histBtn" title="Prompt history across all sessions">
             <svg class="icon" width="15" height="15"><use href="#ic-message"/></svg> <span class="lbl">prompts</span>
@@ -1064,8 +1077,20 @@ label.chk { font-size: var(--fs-sm); color: var(--muted); display: inline-flex; 
 
 <dialog id="costDialog">
     <div class="dlghead">
-        <h3><svg class="icon" width="17" height="17"><use href="#ic-chart"/></svg> Cost over time</h3>
+        <h3><svg class="icon" width="17" height="17"><use href="#ic-chart"/></svg> Usage</h3>
         <p class="meta dlg-sub" id="costMeta"></p>
+    </div>
+    <div class="dlgpad">
+        <div id="limitsWrap" class="usage-section"><span class="meta"><span class="spin"></span> loading limits…</span></div>
+        <div class="usage-section">
+            <div class="usage-title">By model <span class="meta">(retained transcripts, API-equivalent $)</span></div>
+            <div class="rollwrap"><table class="rolltable" id="modelTable"><tbody><tr><td class="meta">loading…</td></tr></tbody></table></div>
+        </div>
+        <div class="usage-section">
+            <div class="usage-title">Top sessions <span class="meta">(main vs sub-agents)</span></div>
+            <div class="rollwrap"><table class="rolltable" id="sessCostTable"><tbody><tr><td class="meta">loading…</td></tr></tbody></table></div>
+        </div>
+        <div class="usage-title">Cost over time <span class="meta" id="rollMeta"></span></div>
         <div class="costtabs" id="costTabs">
             <span class="tab active" data-window="day" tabindex="0" role="button">Day</span>
             <span class="tab" data-window="week" tabindex="0" role="button">Week</span>
@@ -1220,7 +1245,7 @@ label.chk { font-size: var(--fs-sm); color: var(--muted); display: inline-flex; 
 <div class="jobs" id="jobs"></div>
 
 <script>
-const state = { sessions: [], jobs: {}, toasts: {}, matches: [], live: {} };
+const state = { sessions: [], deletedUsd: 0, jobs: {}, toasts: {}, matches: [], live: {} };
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
 // Loopback = the Mac itself (Terminal attach is useful). Anything else (phone via
@@ -1641,16 +1666,18 @@ function render() {
         return !q || hay.includes(q);
     });
     const live = state.sessions.filter((s) => ['running','waiting-on-input','open-idle'].includes(s.status)).length;
-    const totalUsd = state.sessions.reduce((sum, s) => sum + (s.cost?.totalUsd || 0), 0);
+    const liveUsd = state.sessions.reduce((sum, s) => sum + (s.cost?.totalUsd || 0), 0);
+    const totalUsd = liveUsd + (state.deletedUsd || 0);
     const anyUnpriced = state.sessions.some((s) => s.cost && !s.cost.pricedKnown);
     const countsEl = document.getElementById('counts');
     countsEl.textContent = `${state.sessions.length} sessions · ${live} live · `;
     const costSpan = document.createElement('span');
     costSpan.className = 'totalcost';
     countsEl.appendChild(costSpan);
+    const delNote = state.deletedUsd > 0 ? ` (includes ${fmtCost(state.deletedUsd)} from deleted sessions)` : '';
     setTotal(costSpan, totalUsd, (anyUnpriced ? '*' : '') + ' total',
-        anyUnpriced ? 'Lifetime API spend across all sessions (* some models unpriced)'
-                    : 'Lifetime API spend across all sessions (input + output + cache tiers)');
+        (anyUnpriced ? 'Lifetime API spend across all sessions (* some models unpriced)'
+                     : 'Lifetime API spend across all sessions (input + output + cache tiers)') + delNote);
     document.getElementById('gridcount').textContent = `${shown.length} shown`;
 
     const repos = [...new Set(state.sessions.map((s) => s.repo))].sort();
@@ -1710,9 +1737,10 @@ function render() {
 // a slow fetch can never regress the board to an older snapshot.
 let sessionsGen = 0;
 
-function applySessions(data) {
+function applySessions(data, deletedUsd = 0) {
     sessionsGen++;
     state.sessions = data;
+    state.deletedUsd = deletedUsd;
     hideBanner();
     try {
         render();
@@ -1728,9 +1756,10 @@ async function load() {
         const res = await fetch('/api/sessions', { signal: AbortSignal.timeout(8000) });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
-        if (!Array.isArray(data)) throw new Error(data.error || 'unexpected response shape');
+        const sessions = Array.isArray(data) ? data : data.sessions;
+        if (!Array.isArray(sessions)) throw new Error(data.error || 'unexpected response shape');
         if (sessionsGen !== gen) return; // fresher data already painted the board
-        applySessions(data);
+        applySessions(sessions, data.deletedUsd || 0);
     } catch (err) {
         if (sessionsGen !== gen) return; // a fresher apply landed — don't raise a stale banner
         showBanner(icn('ic-alert', 13) + ' ' + loadFailureHint(err));
@@ -2219,7 +2248,86 @@ let costWindow = 'day';
 
 function openCost() {
     withVT(() => document.getElementById('costDialog').showModal());
+    loadLimits();
+    loadModelUsage();
+    renderSessCost();
     loadRollup();
+}
+
+// Subscription limit gauges (server caches ~5 min; the upstream endpoint 429s
+// under frequent polling, so no client-side auto-refresh).
+async function loadLimits() {
+    const el = document.getElementById('limitsWrap');
+    try {
+        const res = await fetch('/api/usage/limits', { signal: AbortSignal.timeout(15000) });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const { data, error } = await res.json();
+        if (!data) throw new Error(error || 'no data');
+        const gauges = (data.limits || []).map((l) => {
+            const label = l.kind === 'session' ? 'Session (5h)'
+                : l.scope?.model?.display_name ? `Weekly · ${l.scope.model.display_name}`
+                : 'Weekly (all models)';
+            const resets = l.resets_at ? fmtResets(l.resets_at) : '';
+            const cls = l.percent >= 90 ? 'crit' : l.percent >= 75 ? 'warn' : '';
+            return `<div class="limitrow" title="resets ${esc(resets)}">
+                <span class="limitlbl">${esc(label)}</span>
+                <span class="limitbar"><span class="limitfill ${cls}" style="width:${Math.min(l.percent, 100)}%"></span></span>
+                <span class="limitpct ${cls}">${l.percent}%</span>
+                <span class="meta limitreset">resets ${esc(resets)}</span>
+            </div>`;
+        }).join('');
+        const staleNote = error ? `<div class="meta">showing cached values — last fetch failed: ${esc(error)}</div>` : '';
+        el.innerHTML = `<div class="usage-title">Subscription limits <span class="meta">(live, from your Claude plan)</span></div>${gauges || '<span class="meta">no limits reported</span>'}${staleNote}`;
+    } catch (err) {
+        el.innerHTML = `<div class="usage-title">Subscription limits</div><span class="meta">unavailable: ${esc(err.message)}</span>`;
+    }
+}
+
+function fmtResets(iso) {
+    const ms = new Date(iso) - Date.now();
+    if (!Number.isFinite(ms)) return iso;
+    if (ms <= 0) return 'now';
+    const h = Math.floor(ms / 3600000), m = Math.round((ms % 3600000) / 60000);
+    return h >= 24 ? `in ${Math.floor(h / 24)}d ${h % 24}h` : h > 0 ? `in ${h}h ${m}m` : `in ${m}m`;
+}
+
+const fmtTok = (n) => !n ? '·' : n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(n);
+
+async function loadModelUsage() {
+    const el = document.getElementById('modelTable');
+    try {
+        const res = await fetch('/api/usage/models', { signal: AbortSignal.timeout(30000) });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const r = await res.json();
+        const head = '<thead><tr><th>model</th><th>cost</th><th>input</th><th>output</th><th>cache read</th><th>cache write</th></tr></thead>';
+        const rows = (r.models || []).map((m) => {
+            const u = m.tokens || {};
+            const cw = (u.cacheWrite5m || 0) + (u.cacheWrite1h || 0);
+            return `<tr><td title="${esc(m.model)}">${esc(m.model.replace(/^claude-/, ''))}${m.priced ? '' : ' <span class="meta">unpriced</span>'}</td><td class="usd">${fmtCost(m.usd)}</td><td>${fmtTok(u.input)}</td><td>${fmtTok(u.output)}</td><td>${fmtTok(u.cacheRead)}</td><td>${fmtTok(cw)}</td></tr>`;
+        }).join('');
+        el.innerHTML = head + `<tbody>${rows || '<tr><td class="meta">no usage recorded</td></tr>'}</tbody>`;
+        const del = r.deletedUsd > 0 ? ` + ${fmtCost(r.deletedUsd)} banked from deleted sessions` : '';
+        document.getElementById('costMeta').innerHTML = `Retained transcripts total <span class="totalcost">${fmtCost(r.totalUsd)}</span>${r.pricedKnown ? '' : '*'}${del}`;
+    } catch (err) {
+        el.innerHTML = `<tbody><tr><td class="meta">could not load: ${esc(err.message)}</td></tr></tbody>`;
+    }
+}
+
+// Main-vs-sub-agent split per session, from data already in state.sessions.
+function renderSessCost() {
+    const el = document.getElementById('sessCostTable');
+    const top = state.sessions
+        .filter((s) => s.cost && s.cost.totalUsd > 0)
+        .sort((a, b) => b.cost.totalUsd - a.cost.totalUsd)
+        .slice(0, 15);
+    const head = '<thead><tr><th>session</th><th>main</th><th>sub-agents</th><th>total</th></tr></thead>';
+    const rows = top.map((s) => {
+        const name = s.title || s.slug || s.sessionId.slice(0, 8);
+        const sub = s.subagentCost > 0 ? `${fmtCost(s.subagentCost)} <span class="meta">(${s.subagents})</span>` : '·';
+        const main = s.costOwn ?? Math.max(0, s.cost.totalUsd - (s.subagentCost || 0));
+        return `<tr><td title="${esc(s.sessionId)}">${esc(String(name).slice(0, 48))}</td><td class="usd">${fmtCost(main)}</td><td>${sub}</td><td class="usd">${fmtCost(s.cost.totalUsd)}</td></tr>`;
+    }).join('');
+    el.innerHTML = head + `<tbody>${rows || '<tr><td class="meta">no spend recorded</td></tr>'}</tbody>`;
 }
 
 function setCostWindow(w) {
@@ -2238,7 +2346,7 @@ async function loadRollup() {
         const r = await res.json();
         const buckets = (r.buckets || []).slice().reverse();   // most recent first
         const models = [...new Set(buckets.flatMap((b) => Object.keys(b.byModel || {})))];
-        document.getElementById('costMeta').innerHTML =
+        document.getElementById('rollMeta').innerHTML =
             `Total <span class="totalcost">${fmtCost(r.totalUsd)}</span> across ${buckets.length} ${costWindow}${buckets.length === 1 ? '' : 's'} (UTC)`;
         const head = `<thead><tr><th>${costWindow}</th><th>total</th>${models.map((m) => `<th title="${esc(m)}">${esc(m.replace(/^claude-/, ''))}</th>`).join('')}</tr></thead>`;
         const rows = buckets.map((b) => `<tr><td>${esc(b.date)}</td><td class="usd">${fmtCost(b.usd)}</td>${models.map((m) => `<td>${b.byModel && b.byModel[m] ? fmtCost(b.byModel[m]) : '·'}</td>`).join('')}</tr>`).join('');
@@ -2782,7 +2890,7 @@ let es = null;
 function connectEvents() {
     if (es) return;
     es = new EventSource('/api/events');
-    es.addEventListener('sessions', (e) => { const d = JSON.parse(e.data); if (Array.isArray(d)) applySessions(d); });
+    es.addEventListener('sessions', (e) => { const d = JSON.parse(e.data); const s = Array.isArray(d) ? d : d.sessions; if (Array.isArray(s)) applySessions(s, (d && d.deletedUsd) || 0); });
     es.addEventListener('refresh', load);
     es.addEventListener('job', (e) => { const j = JSON.parse(e.data); if (dismissedJobs.has(j.id)) return; state.jobs[j.id] = j; renderJobs(); });
     es.addEventListener('transcript', (e) => {

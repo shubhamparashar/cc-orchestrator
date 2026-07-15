@@ -99,3 +99,14 @@ test('honors Retry-After on 429 for the cooldown length', async () => {
     await subscriptionLimits(deps);
     assert.equal(calls, 2);
 });
+
+test('a known-expired token never reaches the network', async () => {
+    freshConfig();
+    resetLimitsCache();
+    let calls = 0;
+    const fetchFn = async () => { calls++; return { ok: true, json: async () => ({}) }; };
+    const deps = { getCreds: async () => ({ token: 't', expiresAt: 500 }), fetchFn, now: () => 1000 };
+    const r = await subscriptionLimits(deps);
+    assert.equal(calls, 0);
+    assert.match(r.error, /token expired/);
+});

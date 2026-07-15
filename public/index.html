@@ -547,7 +547,16 @@ main { padding: var(--sp-3) clamp(14px,3vw,26px) 90px; max-width: 1380px; margin
 
 /* ── full pages (#/usage, #/chat/<id>) ─────────────────────── */
 body[data-route="usage"] .hero, body[data-route="usage"] main,
+body[data-route="todos"] .hero, body[data-route="todos"] main,
 body[data-route="chat"] .hero, body[data-route="chat"] main { display: none; }
+.todogroup { border: 1px solid var(--line-strong); background: var(--inner); border-radius: var(--r-md); padding: 12px 14px; margin-bottom: 12px; }
+.todogroup .ghead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.todogroup .ghead a { color: inherit; text-decoration: none; font-weight: 600; }
+.todogroup .ghead a:hover { text-decoration: underline; }
+.todoitem { display: flex; gap: 8px; padding: 3px 0; font-size: 13px; align-items: baseline; }
+.todoitem .st { flex: 0 0 14px; text-align: center; }
+.todoitem.in_progress .st { color: var(--accent-dk); }
+.todoitem .st { color: var(--muted); }
 .page { max-width: 980px; margin: 20px auto 60px; padding: 0 18px; }
 .pagehead { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
 .pagehead h2 { margin: 0; font-size: 20px; display: flex; align-items: center; gap: 8px; }
@@ -590,6 +599,21 @@ body[data-route="chat"] .hero, body[data-route="chat"] main { display: none; }
 .chip { display: inline-block; padding: 0 7px; border-radius: 999px; border: 1px solid var(--line-strong); font-size: 10px; opacity: .75; margin-right: 7px; }
 #attrWrap .limitlbl { flex: 0 0 235px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chatpagebody { display: flex; flex-direction: column; gap: 10px; }
+/* #/chat page fills the viewport: body becomes a flex column (header keeps
+   its natural height, page takes the rest), thread scrolls internally,
+   content anchored low — no window scroll, no CLS on load. */
+body[data-route="chat"] { height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
+body[data-route="chat"] > header { flex-shrink: 0; }
+#chatPage { display: flex; flex-direction: column; flex: 1; min-height: 0; margin: 12px auto; width: min(980px, 100vw); }
+#chatPage .pagehead { flex-shrink: 0; margin-bottom: 14px; }
+#chatPage .chatpagebody {
+    flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+    justify-content: flex-end;
+}
+/* justify-end breaks scrolling once content overflows; margin-top:auto on the
+   first message keeps short threads bottom-anchored without that trap. */
+#chatPage .chatpagebody { justify-content: flex-start; }
+#chatPage .chatpagebody > :first-child { margin-top: auto; }
 .plain { color: inherit; text-decoration: none; }
 .plain:hover { text-decoration: underline; }
 @media (max-width: 560px) {
@@ -779,6 +803,11 @@ label.chk { font-size: var(--fs-sm); color: var(--muted); display: inline-flex; 
     border-radius: var(--r-md); padding: 14px; max-height: 56vh; overflow: auto;
     display: grid; gap: 11px; align-content: start;
 }
+/* Chat dialog: big + bottom-anchored — most of the viewport, thread grows,
+   header/footer stay pinned. Scoped so every other dialog keeps its size. */
+#chatDialog { width: min(880px, 94vw); height: 88vh; max-height: 88vh; margin: auto auto max(20px, env(safe-area-inset-bottom)); }
+#chatDialog > .dlgpad { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+#chatDialog .chatbody { flex: 1; max-height: none; min-height: 0; overscroll-behavior: contain; }
 .chatmsg { display: grid; gap: 4px; max-width: 100%; }
 .chatmsg.user { justify-items: end; }
 .chatmsg.assistant { justify-items: stretch; }
@@ -880,6 +909,8 @@ label.chk { font-size: var(--fs-sm); color: var(--muted); display: inline-flex; 
     /* sheet grab-handle: signals the backdrop-tap dismissal */
     dialog::before { content: ''; display: block; width: 36px; height: 4px; border-radius: 2px;
         background: var(--muted); opacity: .4; margin: 8px auto 0; flex-shrink: 0; }
+    #chatDialog { width: 100vw; height: 92vh; max-height: 92vh; margin: auto auto 0; }
+    #chatPage { margin: 6px auto; }
     .jobs { left: 12px; right: 12px; width: auto; bottom: calc(12px + env(safe-area-inset-bottom)); }
 }
 
@@ -1011,6 +1042,9 @@ label.chk { font-size: var(--fs-sm); color: var(--muted); display: inline-flex; 
     <div class="hdr-tools" id="hdrTools">
         <button class="btn ghost" id="costBtn" title="Usage: subscription limits, per-model cost/tokens, per-session split, cost over time">
             <svg class="icon" width="15" height="15"><use href="#ic-chart"/></svg> <span class="lbl">usage</span>
+        </button>
+        <button class="btn ghost" id="todoBtn" title="Open todo items from your most recent sessions (refreshed daily)">
+            <svg class="icon" width="15" height="15"><use href="#ic-check"/></svg> <span class="lbl">todos</span>
         </button>
         <button class="btn ghost" id="histBtn" title="Prompt history across all sessions">
             <svg class="icon" width="15" height="15"><use href="#ic-message"/></svg> <span class="lbl">prompts</span>
@@ -1180,6 +1214,16 @@ label.chk { font-size: var(--fs-sm); color: var(--muted); display: inline-flex; 
     </section>
 </section>
 
+<section id="todoPage" class="page" hidden>
+    <div class="pagehead">
+        <a class="btn ghost" href="#/">&larr; Sessions</a>
+        <h2><svg class="icon" width="18" height="18"><use href="#ic-check"/></svg> Todos</h2>
+        <span class="meta" id="todoMeta"></span>
+        <button class="btn" id="todoRefresh" style="margin-left:auto">Refresh</button>
+    </div>
+    <div id="todoBody"><span class="meta"><span class="spin"></span> loading&hellip;</span></div>
+</section>
+
 <section id="chatPage" class="page" hidden>
     <div class="pagehead">
         <a class="btn ghost" href="#/">&larr; Sessions</a>
@@ -1318,6 +1362,7 @@ label.chk { font-size: var(--fs-sm); color: var(--muted); display: inline-flex; 
     </div>
     <div class="dlgrow">
         <span class="meta grow" id="liveViewStatus"></span>
+        <button class="btn" id="liveChatBtn" hidden><svg class="icon" width="13" height="13"><use href="#ic-message"/></svg> Open chat</button>
         <button class="btn danger" id="liveStopBtn">Stop</button>
         <button class="btn" onclick="closeDlg('liveViewDialog')">Close</button>
     </div>
@@ -2343,9 +2388,10 @@ let chatPageTimer = null;
 
 function route() {
     const m = location.hash.match(/^#\/chat\/([0-9a-f-]{36})$/i);
-    const r = location.hash.startsWith('#/usage') ? 'usage' : m ? 'chat' : 'home';
+    const r = location.hash.startsWith('#/usage') ? 'usage' : location.hash.startsWith('#/todos') ? 'todos' : m ? 'chat' : 'home';
     document.body.dataset.route = r;
     document.getElementById('usagePage').hidden = r !== 'usage';
+    document.getElementById('todoPage').hidden = r !== 'todos';
     document.getElementById('chatPage').hidden = r !== 'chat';
     clearInterval(chatPageTimer);
     clearInterval(limitsTimer);
@@ -2354,6 +2400,7 @@ function route() {
         renderUsagePage();
         limitsTimer = setInterval(loadLimits, 60_000);
     }
+    if (r === 'todos') loadTodos();
     if (r === 'chat') {
         chatPageId = m[1];
         document.getElementById('chatPageBody').innerHTML = '<p class="meta"><span class="spin"></span> loading&hellip;</p>';
@@ -2613,6 +2660,27 @@ async function loadRollup() {
     }
 }
 
+/* ── todos page (#/todos): open items from recent sessions ── */
+async function loadTodos(refresh) {
+    const body = document.getElementById('todoBody');
+    if (refresh) body.innerHTML = '<span class="meta"><span class="spin"></span> rebuilding&hellip;</span>';
+    try {
+        const res = await fetch('/api/todos' + (refresh ? '?refresh=1' : ''), { signal: AbortSignal.timeout(30000) });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const d = await res.json();
+        const age = d.generatedAt ? fmtDur(Date.now() - d.generatedAt) : '?';
+        document.getElementById('todoMeta').textContent =
+            `${d.openItems} open item${d.openItems === 1 ? '' : 's'} across ${d.groups.length} sessions · refreshed ${age} ago · daily · local only`;
+        body.innerHTML = d.groups.map((g) => `<div class="todogroup">
+            <div class="ghead"><a target="_blank" href="#/chat/${g.sessionId}" title="open chat">${esc(g.title)}</a>
+                <span class="meta">${esc(g.repo)}${g.status ? ' · ' + esc(statusLabel(g.status)) : ''}</span></div>
+            ${g.items.map((i) => `<div class="todoitem ${i.status}"><span class="st">${i.status === 'in_progress' ? '▸' : '○'}</span><span>${esc(i.subject)}${i.also ? ` <span class="meta">(also in ${i.also} other session${i.also === 1 ? '' : 's'})</span>` : ''}</span></div>`).join('')}
+        </div>`).join('') || '<span class="meta">no open todos in your recent sessions 🎉</span>';
+    } catch (err) {
+        body.innerHTML = `<span class="meta">could not load: ${esc(err.message)}</span>`;
+    }
+}
+
 /* ── chat page (#/chat/<id>) ───────────────────────────────── */
 async function loadChatPage() {
     const id = chatPageId;
@@ -2637,6 +2705,8 @@ async function loadChatPage() {
 }
 
 document.getElementById('costBtn').onclick = () => { location.hash = '#/usage'; };
+document.getElementById('todoBtn').onclick = () => { location.hash = '#/todos'; };
+document.getElementById('todoRefresh').onclick = () => loadTodos(true);
 document.querySelectorAll('#costTabs .tab').forEach((t) => {
     t.onclick = () => setCostWindow(t.dataset.window);
     t.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCostWindow(t.dataset.window); } };
@@ -2870,7 +2940,12 @@ function populateNewLiveCwds() {
     for (const s of state.sessions) {
         if (s.cwd && !seen.has(s.cwd)) seen.set(s.cwd, { repo: s.repo, wt: s.isWorktree });
     }
-    sel.innerHTML = [...seen]
+    // Default workspace: the common "<home>/repo" root, derived from known cwds
+    // so the client never guesses the home dir. Listed (and selected) first.
+    const root = [...seen.keys()].map((c) => c.match(/^(.*?\/repo)(\/|$)/)?.[1]).find(Boolean);
+    if (root && !seen.has(root)) seen.set(root, { repo: root.replace(/^.*\//, '~/') + ' (default workspace)', wt: false });
+    const ordered = [...seen].sort(([a], [b]) => (a === root ? -1 : b === root ? 1 : 0));
+    sel.innerHTML = ordered
         .map(([cwd, m]) => `<option value="${esc(cwd)}">${esc(m.repo || cwd)}${m.wt ? ' · worktree' : ''}</option>`)
         .join('') || '<option value="">(no known repos — type a path below)</option>';
 }
@@ -3002,6 +3077,7 @@ function openLiveView(liveId) {
     out.textContent = '';
     out.classList.toggle('streaming', !!(e && e.status === 'running'));
     document.getElementById('liveViewStatus').textContent = e && e.status !== 'running' ? statusOfLive(e) : '● live';
+    updateLiveChatBtn(e);
     if (!document.getElementById('liveViewDialog').open) withVT(() => document.getElementById('liveViewDialog').showModal());
 }
 
@@ -3043,10 +3119,30 @@ async function loadLive() {
         if (liveViewId && state.live[liveViewId]) {
             document.getElementById('liveViewStatus').textContent = statusOfLive(state.live[liveViewId]);
             document.getElementById('liveOut').classList.toggle('streaming', state.live[liveViewId].status === 'running');
+            updateLiveChatBtn(state.live[liveViewId]);
         }
     } catch {
         // best-effort: the strip just keeps its last state
     }
+}
+
+// The chat transcript for a live agent: a resumed session is known directly;
+// a NEW session's claude UUID is discovered from the session list — the newest
+// session in the live entry's cwd that started after the agent did.
+function liveChatTarget(e) {
+    if (!e) return null;
+    if (e.sessionId) return e.sessionId;
+    const t = Date.parse(e.startedAt || 0) - 15000;
+    const cands = state.sessions.filter((s) => s.cwd === e.cwd && Date.parse(s.startedAt || s.mtime || 0) >= t);
+    cands.sort((a, b) => Date.parse(b.startedAt || b.mtime || 0) - Date.parse(a.startedAt || a.mtime || 0));
+    return cands[0]?.sessionId || null;
+}
+
+function updateLiveChatBtn(e) {
+    const btn = document.getElementById('liveChatBtn');
+    const target = liveChatTarget(e);
+    btn.hidden = !target;
+    btn.onclick = target ? () => { closeDlg('liveViewDialog'); location.hash = '#/chat/' + target; } : null;
 }
 
 let liveLastHtml = '';

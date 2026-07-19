@@ -2480,7 +2480,8 @@ async function loadModelUsage() {
         const rows = (usageModels.models || []).map((m) => {
             const u = m.tokens || {};
             const cw = (u.cacheWrite5m || 0) + (u.cacheWrite1h || 0);
-            const hit = (u.cacheRead || u.input) ? ((u.cacheRead || 0) / ((u.cacheRead || 0) + (u.input || 0)) * 100).toFixed(1) + '%' : '·';
+            const hitDenom = (u.cacheRead || 0) + (u.input || 0) + cw;
+            const hit = hitDenom ? ((u.cacheRead || 0) / hitDenom * 100).toFixed(1) + '%' : '·';
             return `<tr><td title="${esc(m.model)}">${esc(m.model.replace(/^claude-/, ''))}${m.priced ? '' : ' <span class="meta">unpriced</span>'}</td><td class="usd">${fmtCost(m.usd)}</td><td>${fmtTok(u.input)}</td><td>${fmtTok(u.output)}</td><td>${fmtTok(u.cacheRead)}</td><td>${fmtTok(cw)}</td><td>${hit}</td></tr>`;
         }).join('');
         el.innerHTML = head + `<tbody>${rows || '<tr><td class="meta">no usage recorded</td></tr>'}</tbody>`;
@@ -2499,9 +2500,11 @@ function renderOverview() {
     const mainUsd = state.sessions.reduce((t, s) => t + (s.costOwn ?? Math.max(0, (s.cost?.totalUsd || 0) - (s.subagentCost || 0))), 0);
     const subUsd = state.sessions.reduce((t, s) => t + (s.subagentCost || 0), 0);
     const tok = (r.models || []).reduce((a, m) => {
-        a.cr += m.tokens?.cacheRead || 0; a.in += m.tokens?.input || 0; return a;
-    }, { cr: 0, in: 0 });
-    const cacheHit = (tok.cr + tok.in) ? (tok.cr / (tok.cr + tok.in) * 100).toFixed(1) : '0';
+        a.cr += m.tokens?.cacheRead || 0; a.in += m.tokens?.input || 0;
+        a.cw += (m.tokens?.cacheWrite5m || 0) + (m.tokens?.cacheWrite1h || 0);
+        return a;
+    }, { cr: 0, in: 0, cw: 0 });
+    const cacheHit = (tok.cr + tok.in + tok.cw) ? (tok.cr / (tok.cr + tok.in + tok.cw) * 100).toFixed(1) : '0';
     const del = r.deletedUsd > 0 ? ` <span class="meta">+ ${fmtCost(r.deletedUsd)} banked</span>` : '';
     document.getElementById('overviewStats').innerHTML = [
         [`${fmtCost(r.totalUsd)}${r.pricedKnown ? '' : '*'}${del}`, 'total spend (API-equivalent)'],

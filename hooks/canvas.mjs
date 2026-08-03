@@ -45,6 +45,23 @@ try {
     const sessionId = input.session_id;
     if (!isSessionUuid(sessionId)) process.exit(0);
 
+    // compaction drops the in-transcript announce, so re-point the model at the
+    // canvas when the session comes back from compact/resume
+    if (input.hook_event_name === 'SessionStart') {
+        const canvasPath = join(homedir(), '.claude', 'contexts', 'canvas', sessionId, 'canvas.md');
+        if (existsSync(canvasPath)) {
+            const lines = readFileSync(canvasPath, 'utf8').trimEnd().split('\n').filter((l) => l.startsWith('- ['));
+            if (lines.length) {
+                process.stdout.write(
+                    `Task canvas for this session (${lines.length} spilled outputs, full map in ${canvasPath}); latest:\n` +
+                    lines.slice(-10).join('\n') +
+                    `\nOpen the listed file to re-read an earlier tool result instead of re-running it.`
+                );
+            }
+        }
+        process.exit(0);
+    }
+
     const text = asText(input.tool_response);
     if (!text || text.length < SPILL_MIN_CHARS) process.exit(0);
 

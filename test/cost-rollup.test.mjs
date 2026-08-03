@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { rollupFromDaily, rollupToCsv } from '../lib/cost.mjs';
-import { DEFAULT_PRICING } from '../lib/pricing.mjs';
+import { DEFAULT_PRICING, rateFor } from '../lib/pricing.mjs';
 
 // Synthetic day×model maps, no real files. Dates chosen to exercise bucketing:
 // 2026-06-08 (Mon) and 2026-06-09 (Tue) share an ISO week; 2026-07-01 is a
@@ -71,4 +71,14 @@ test('rollupToCsv emits header + one row per bucket', () => {
     assert.equal(content.length, 1 + r.buckets.length); // header + N buckets
     assert.ok(content[0].startsWith('period,total_usd,'), content[0]);
     assert.ok(content[0].includes('claude-opus-4-8'), content[0]);
+});
+
+// An unpriced model silently costs $0 rather than erroring, so a missing entry
+// looks identical to a free session. Assert the current default models price.
+test('DEFAULT_PRICING covers the models sessions actually run on', () => {
+    for (const id of ['claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5', 'claude-haiku-4-5', 'claude-fable-5']) {
+        const rate = rateFor(id, DEFAULT_PRICING);
+        assert.ok(rate, `no price for ${id} - sessions on it report $0`);
+        assert.ok(rate.input > 0 && rate.output > 0, `zero rate for ${id}`);
+    }
 });

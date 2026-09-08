@@ -11,6 +11,7 @@ import { basename, join } from 'node:path';
 import { isSyntheticUserText, parseLines, readSlice, digestFile } from '../lib/scan.mjs';
 import { CONTEXTS_DIR, acquireGenLock, readContext, releaseGenLock, writeContext } from '../lib/contextStore.mjs';
 import { buildSessionIndex } from '../lib/sessionIndex.mjs';
+import { MAX_BODY_LINES, buildPrompt, composeFile } from '../lib/ctxPrompt.mjs';
 
 const CLAUDE_BIN = process.env.CC_CTX_CLAUDE_BIN || join(homedir(), '.claude', 'local', 'claude');
 // Cheapest generally-available model for these short summaries. (Fable 5 is
@@ -21,7 +22,6 @@ const RAW_TAIL_BYTES = 512 * 1024;
 const DIALOGUE_CAP_BYTES = 30 * 1024;
 const PER_MESSAGE_CAP = 1500;
 const MODEL_TIMEOUT_MS = 180_000;
-const MAX_BODY_LINES = 55;
 const LOG = '/tmp/cc-orch-ctx.log';
 
 function log(msg) {
@@ -72,38 +72,6 @@ function extractDialogue(records) {
     return kept.join('\n');
 }
 
-function buildPrompt({ existing, dialogue, repo, title }) {
-    return `You maintain a rolling context file for coding sessions—a future agent must resume from it cold.
-
-TASK: Merge EXISTING with NEW EXCERPT. Keep facts that remain true. Drop:
-• Tasks marked done or verified
-• Bugs that are fixed
-• Approaches tried and rejected
-• Decisions that are reversed
-Compress mercilessly: one line per fact, reuse existing phrasing if accurate. Never append; overwrite stale sections. Hard limit: ${MAX_BODY_LINES - 5} lines total.
-
-Output EXACTLY this with no preamble, code fences, or extra markdown:
-tags: <3–6 comma-separated topic tags>
-## Goal
-<1–2 lines: what this session achieves>
-## Key files
-<bullets: file paths + their role/what's changing>
-## Decisions
-<bullets: architectural choices, constraints, tradeoffs made>
-## State
-<bullets: done/verified, broken/stuck, what blocks next step>
-## Next step
-<1–3 bullets: exact immediate actions to make progress>
-
-Session: ${repo} — ${title}
-
-EXISTING FILE:
-${existing || '(none)'}
-
-NEW CONVERSATION EXCERPT (oldest first):
-${dialogue}`;
-}
-
 function runClaude(prompt, model) {
     return new Promise((resolve, reject) => {
         const args = ['-p', '--no-session-persistence'];
@@ -136,32 +104,6 @@ function runClaude(prompt, model) {
         child.stdin.on('error', () => {});
         child.stdin.end(prompt);
     });
-}
-
-function composeFile({ sessionId, repo, cwd, title, modelOutput }) {
-    let body = modelOutput.trim()
-        .replace(/^```[a-z]*\n/, '').replace(/\n```$/, '');
-    let tags = [];
-    const tagsMatch = body.match(/^tags:\s*(.+)$/m);
-    if (tagsMatch) {
-        tags = tagsMatch[1].split(',').map((t) => t.trim()).filter(Boolean).slice(0, 6);
-        body = body.replace(/^tags:.*\n?/m, '');
-    }
-    const goalAt = body.indexOf('## Goal');
-    if (goalAt === -1) throw new Error('model output missing "## Goal" section');
-    body = body.slice(goalAt).trim();
-    body = body.split('\n').slice(0, MAX_BODY_LINES).join('\n');
-    const fm = [
-        '---',
-        `session: ${sessionId}`,
-        `repo: ${repo}`,
-        `cwd: ${cwd}`,
-        `title: ${String(title).replace(/\n/g, ' ').slice(0, 120)}`,
-        `tags: [${tags.join(', ')}]`,
-        `updated: ${new Date().toISOString()}`,
-        '---',
-    ];
-    return `${fm.join('\n')}\n\n${body}\n`;
 }
 
 const sessionId = argValue('--session');

@@ -1,0 +1,6 @@
+USER: GetOrders search is slow, ~877ms. It runs internal_order_id ILIKE ? OR title ILIKE ? on order_line_item.
+ASSISTANT: EXPLAIN shows title is covered by an existing trigram index but internal_order_id is a seq scan. Adding a trigram GIN index on order_line_item.internal_order_id should fix the OR.
+USER: ok add a migration
+ASSISTANT: Created services/migrations/20260701_add_oli_internal_order_id_trgm.ts. One constraint: the migration runner wraps every migration in a transaction, so CREATE INDEX CONCURRENTLY is not allowed here; using plain CREATE INDEX. Registered it in services/allMigrations.ts.
+USER: run typecheck
+ASSISTANT: yarn typecheck passes. Not yet run against a database. Next: trigger-rds-migration on staging and re-run EXPLAIN.

@@ -1,0 +1,20 @@
+tags: performance-tuning, database-indexing, migration
+
+## Goal
+Fix GetOrders search latency (877ms) by adding trigram GIN index on order_line_item.internal_order_id to eliminate seq scan in OR clause.
+
+## Key files
+- services/migrations/20260701_add_oli_internal_order_id_trgm.ts — new trigram index migration
+- services/allMigrations.ts — registered migration
+
+## Decisions
+- Trigram GIN index (matches existing title index pattern) to speed ILIKE queries.
+- Plain CREATE INDEX (not CONCURRENT) because migration runner wraps in transactions.
+
+## State
+- Migration created and typecheck passes.
+- Not yet validated against staging database.
+
+## Next step
+- Trigger migration on staging (RDS).
+- Re-run EXPLAIN to confirm index is used and latency improves.

@@ -1,0 +1,12 @@
+tags: database, performance, migration
+## Goal
+Add index on qc_item.qc_product_id to fix QC query performance.
+## Key files
+- Database: qc_item table, qc_product_id column
+## Decisions
+- Index-first fix for sequential-scan bottleneck in concurrent QC queries.
+## State
+- Open: 7 concurrent QC calls use 142s each, sequential scans on qc_product_id.
+## Next step
+- Author migration adding index on qc_item.qc_product_id.
+- Verify baseline and post-index query performance.

@@ -1,0 +1,12 @@
+tags: cache, ttl, config-bump
+## Goal
+Bump SHIPMENT_DETAILS_CACHE_EXPIRY_TIME from 60 to 120 seconds in cache config.
+## Key files
+- packages/functions/src/constant/cache.ts: changed SHIPMENT_DETAILS_CACHE_EXPIRY_TIME constant
+## Decisions
+Simple constant update with no downstream ripple; typecheck verified.
+## State
+Code change done and typechecked; no other references found. Unit tests and commit remain.
+## Next step
+- Run cache unit tests to verify no regressions
+- Commit the change

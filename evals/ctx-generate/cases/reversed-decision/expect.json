@@ -1,0 +1,3 @@
+{ "repo": "fleek-api", "title": "Duplicate fulfillments on order init",
+  "must_contain": ["advisory", "orderLock|withOrderInitLock"],
+  "must_not_contain": ["(switch|change|convert)[^\\n]*to (a )?FIFO", "## Next step[\\s\\S]*FIFO"] }

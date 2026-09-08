@@ -1,0 +1,20 @@
+tags: performance, database, indexing, migrations
+## Goal
+Speed up GetOrders search by adding trigram GIN index on order_line_item.internal_order_id
+
+## Key files
+- services/migrations/20260701_add_oli_internal_order_id_trgm.ts — new trigram index migration
+- services/allMigrations.ts — migration registered here
+
+## Decisions
+- Using plain CREATE INDEX (not CONCURRENTLY) because migration runner wraps in transaction
+- Title already has trigram index; internal_order_id was seq scan
+
+## State
+- Migration file created and registered
+- Typecheck passes
+- Not yet run against database
+
+## Next step
+- trigger-rds-migration on staging
+- Re-run EXPLAIN to verify query plan uses both indexes

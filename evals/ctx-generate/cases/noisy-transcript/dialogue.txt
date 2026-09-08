@@ -1,0 +1,10 @@
+USER: hi
+ASSISTANT: Hello. What would you like to work on?
+USER: asdfgh
+ASSISTANT: That looks like a typo. What should I do?
+USER: sorry. can you bump the cache ttl for shipment details from 60s to 120s in constant/cache.ts
+ASSISTANT: Changed SHIPMENT_DETAILS_CACHE_EXPIRY_TIME from 60 to 120 in packages/functions/src/constant/cache.ts. No other references. Typecheck passes.
+USER: thx. brb lunch
+ASSISTANT: Sure. When you are back the remaining step is to run the cache unit test and commit.
+USER: ok
+ASSISTANT: Standing by.

@@ -1,0 +1,4 @@
+USER: did the redis fix land?
+ASSISTANT: Yes. checkClientInitialised now checks client.status and, on `end`, reconnects with a bounded 1.5s waitForReady. Unit tests added in redis.test.ts, all green. Deployed to staging and verified: zero `end`-state errors over a 6 hour window, offers no longer 500.
+USER: great, that bug is closed. next thing is the missing index on qc_item.qc_product_id, 7 concurrent QC calls burned 142s of DB time each
+ASSISTANT: Understood. I'll start a migration for an index on qc_item.qc_product_id next.

@@ -1,0 +1,22 @@
+tags: performance, database, migrations, indexing, orders
+
+## Goal
+Fix GetOrders search slowness (~877ms) by indexing order_line_item.internal_order_id for ILIKE queries.
+
+## Key files
+- services/migrations/20260701_add_oli_internal_order_id_trgm.ts — adds trigram GIN index on order_line_item.internal_order_id
+- services/allMigrations.ts — migration registry, includes new migration
+- order_line_item table — query runs internal_order_id ILIKE ? OR title ILIKE ?
+
+## Decisions
+- Trigram GIN index on internal_order_id to cover OR clause (title already has trigram index)
+- Plain CREATE INDEX (not CONCURRENTLY) because migration runner wraps in transaction
+
+## State
+- Migration created and registered
+- Typecheck passes
+- Not yet run against database
+
+## Next step
+- trigger-rds-migration on staging
+- Re-run EXPLAIN to verify index is used

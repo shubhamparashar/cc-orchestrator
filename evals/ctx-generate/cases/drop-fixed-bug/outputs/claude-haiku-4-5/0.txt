@@ -1,0 +1,13 @@
+tags: db, qc, performance, index, migration
+## Goal
+Add index on qc_item.qc_product_id to fix concurrent QC call performance (142s DB time per call).
+## Key files
+- Database migration: qc_item.qc_product_id index
+## Decisions
+- Use direct database index for performance fix
+## State
+- 7 concurrent QC calls each burning 142s of unindexed scan time
+- Index migration not yet created
+## Next step
+- Create database migration for qc_item.qc_product_id index
+- Deploy and verify query performance improves

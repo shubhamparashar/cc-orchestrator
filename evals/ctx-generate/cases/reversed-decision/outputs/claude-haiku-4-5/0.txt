@@ -1,0 +1,12 @@
+tags: orders, shopify, concurrency, locking, fulfillments
+## Goal
+Stop duplicate fulfillments created when the same Shopify order initializes concurrently via webhooks or redelivery.
+## Key files
+- packages/functions/src/handler/order.ts: addShopifyOrder (wrapped with lock)
+- packages/functions/src/model/orderLock.ts: withOrderInitLock using pg_advisory_xact_lock
+## Decisions
+- Lock at DB layer (pg_advisory_xact_lock) instead of queue, covers webhooks arriving in parallel and redeliveries.
+## State
+- 36 duplicate root fulfillments all-time, ~51% have duplicate CREATED line_item_state rows; withOrderInitLock implemented and typechecks; redelivery test in progress.
+## Next step
+- Write concurrency test: fire two inits for one order, assert exactly one fulfillment created.

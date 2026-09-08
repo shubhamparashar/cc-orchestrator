@@ -177,7 +177,7 @@ Remote phone access over a private transport, gated by a token. Server still bin
 
 | Option | Status on this machine | Decision |
 |---|---|---|
-| Tailscale serve | **Not installed** (no CLI, no `/Applications/Tailscale.app`) | `phone-link.sh` built + reviewed; prints the `brew install --cask tailscale` one-liner when absent. End-to-end against a real tailnet is unverified (no Tailscale here). |
+| Tailscale serve | **Installed** (`/usr/local/bin/tailscale`, `Tailscale.app`), but proxying the wrong ports: `tailscale serve status` shows `:8443 -> 127.0.0.1:7434` and `:8766 -> 127.0.0.1:8765`, not `127.0.0.1:7433` (this server). The phone link currently points at nothing until `phone-link.sh` is re-run to point serve at 7433. | `phone-link.sh` built + reviewed; the real-tailnet path is otherwise unverified. |
 | LAN (`CC_LAN=1`) | Verified end-to-end from the Mac | Opt-in only; binds 0.0.0.0, allowlists the Mac's own LAN IP/hostname. |
 | Funnel / ngrok / cloudflared | — | Excluded by design (no public-internet exposure). |
 
@@ -209,8 +209,11 @@ security review was run over the auth/transport/allowlist surface before sign-of
 
 ## Open questions (phase-2 / phone)
 
-- **Tailscale not installed here** — `phone-link.sh` is logic-reviewed but its real-tailnet
-  path (DNSName parse, `tailscale serve`, host pickup) is unverified until Tailscale is set up.
+- **Tailscale is installed but not pointed at this server** - `tailscale serve status` shows
+  live proxies for ports 7434 and 8765, not 7433 (cc-orchestrator's port), so the phone link
+  currently resolves to nothing. `phone-link.sh` is logic-reviewed but hasn't been re-run
+  against this checkout's port; its real-tailnet path (DNSName parse, host pickup) is
+  otherwise unverified.
 - **PWA icon is SVG only** — iOS prefers a PNG `apple-touch-icon`; the SVG degrades gracefully
   but a rasterized PNG would look sharper on the home screen.
 - **LAN IP at boot** — computed once at server start; if the Mac's IP changes, restart (or the

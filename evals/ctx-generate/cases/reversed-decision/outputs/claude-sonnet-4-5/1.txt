@@ -1,0 +1,14 @@
+tags: orders, shopify, concurrency, database-locks
+## Goal
+Stop duplicate fulfillments when same Shopify order initialised twice.
+## Key files
+- packages/functions/src/handler/order.ts: addShopifyOrder (wrapped in lock)
+- packages/functions/src/model/orderLock.ts: withOrderInitLock implementation
+## Decisions
+- FIFO queue rejected: doesn't cover webhook parallelism or non-FIFO redelivery
+- Serialize at DB layer with pg_advisory_xact_lock(hashtext(orderKey))
+## State
+- 36 duplicate root fulfillments all-time; ~51% of lines have duplicate CREATED line_item_state rows
+- withOrderInitLock implemented, addShopifyOrder wrapped, typecheck passes
+## Next step
+- Write concurrency test: fire two inits for one order, assert single fulfillment

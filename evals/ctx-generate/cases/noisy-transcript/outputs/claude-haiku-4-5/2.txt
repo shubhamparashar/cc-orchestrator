@@ -1,0 +1,13 @@
+tags: cache, constants, TTL, shipment, testing, commit
+## Goal
+Bump SHIPMENT_DETAILS_CACHE_EXPIRY_TIME from 60s to 120s in constant/cache.ts, verify with unit test, and commit.
+## Key files
+- packages/functions/src/constant/cache.ts — SHIPMENT_DETAILS_CACHE_EXPIRY_TIME changed 60→120
+## Decisions
+- No other callers to update; standalone constant bump
+## State
+- Change made and typecheck passed
+- Blocked on: cache unit test run + commit
+## Next step
+- Run cache unit test (verify it passes)
+- Commit the change

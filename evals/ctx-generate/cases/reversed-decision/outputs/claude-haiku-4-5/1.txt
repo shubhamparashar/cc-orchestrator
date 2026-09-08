@@ -1,0 +1,13 @@
+tags: orders, shopify, concurrency, database-locking
+## Goal
+Stop duplicate fulfillments created when Shopify orders initialize concurrently.
+## Key files
+- packages/functions/src/handler/order.ts: addShopifyOrder wrapped in withOrderInitLock
+- packages/functions/src/model/orderLock.ts: withOrderInitLock using pg_advisory_xact_lock(hashtext(orderKey))
+## Decisions
+- Serialize order init at DB layer with advisory locks, not SQS queue. Covers parallel webhooks and non-FIFO redelivery.
+## State
+- Implementation complete: withOrderInitLock wraps addShopifyOrder, typecheck passes
+## Next step
+- Write concurrency test: two parallel inits for same order, assert single fulfillment created
+- Run to verify fix

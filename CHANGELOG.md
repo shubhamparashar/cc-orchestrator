@@ -3,6 +3,33 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.16.0] - 2026-09-08
+
+### Added
+- **Privileged launches now loopback-only.** `/api/attach` with `skipPermissions` and
+  `/api/live/start` with `level: full` return 403 for any non-local request - remote
+  (phone/LAN) callers can no longer request an unsandboxed session.
+- **wa-relay explicit session routing.** WhatsApp replies must name the target with
+  `sid <tag>`; the relay no longer falls back to "most recent session" when the tag is
+  missing or ambiguous.
+- **`jobs/prune.mjs` retention reaper.** Daily sweep dropping data older than 30 days,
+  wired up as `npm run prune`.
+- **Previously unlogged post-1.15 features:** a Todos tab, a cache-hit column in the cost
+  view, the `canvas.mjs` hook (renders tool activity into the session canvas on
+  `compact|resume` and select PostToolUse events), and a `cache-stats` script.
+
+### Changed
+- `npm test` now scoped to `test/` only.
+
+### Removed
+- **`hooks/ctx-prompt.mjs`** no longer warns at 70% context-window usage - that job moved
+  to the claude-conductor plugin's `context-pressure-warn.js` (which also covers 50%/90%).
+  Prior-session retrieval and the first-prompt greeting are unchanged.
+- **`hooks/consolidate-nudge.mjs`** deleted, along with its `SessionStart` entry in
+  `~/.claude/settings.json`. Knowledge-surface hygiene (CLAUDE.md/rules size, memory file
+  count) is now owned by the claude-conductor plugin's `claude-md-size-check.mjs`; the
+  `brain-hygiene` skill it nudged toward is off in `skillOverrides`.
+
 ## [1.15.0] — 2026-07-02
 
 ### Added

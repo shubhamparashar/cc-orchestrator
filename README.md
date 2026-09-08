@@ -181,7 +181,7 @@ Driven by hooks (merged additively into `~/.claude/settings.json`):
 - **SessionStart** → injects `session-id: <uuid>` (so the agent knows its own id) and the context path if one exists.
 - **Stop** → if the transcript is ≥50 KB and the context file is >5 min old, spawns the generator **detached** and returns immediately.
 - **PreCompact** → always regenerates before context is compacted away.
-- **UserPromptSubmit** → on the first real prompt, surfaces relevant prior sessions; once per session, warns at ≥70% context-window usage and suggests `/context` + fork.
+- **UserPromptSubmit** → on the first real prompt, surfaces relevant prior sessions. (Context-window pressure warnings are owned by the claude-conductor plugin, not this hook.)
 
 All hooks are **fail-open** (any error exits 0 silently) and never call a model on the hot path —
 the model work happens only in the detached job. The recursion guard (`CC_CTX_JOB=1` on the

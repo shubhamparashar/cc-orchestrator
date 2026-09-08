@@ -1,0 +1,11 @@
+tags: database, qc, performance
+## Goal
+Add index on qc_item.qc_product_id to fix slow QC queries.
+## Key files
+- [migration file TBD]: index on qc_item.qc_product_id
+## Decisions
+- None yet
+## State
+- 7 concurrent QC calls burned 142s DB time each due to missing qc_product_id index
+## Next step
+- Write migration adding index on qc_item.qc_product_id

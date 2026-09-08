@@ -1,0 +1,13 @@
+tags: cache, config, fleek-api, constants, ttl
+## Goal
+Bump shipment details cache TTL from 60s to 120s
+## Key files
+- packages/functions/src/constant/cache.ts: SHIPMENT_DETAILS_CACHE_EXPIRY_TIME set to 120
+## Decisions
+- Doubled TTL to 120s per user request
+## State
+- Done: constant updated, typecheck passes
+- Pending: cache unit test not run, change not committed
+## Next step
+- Run cache unit test
+- Commit if test passes

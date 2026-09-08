@@ -1,0 +1,4 @@
+USER: I looked again. FIFO won't cover it: orders/create and orders/updated webhooks arrive in parallel outside the queue, and the non-FIFO redelivery is a second source. Let's not touch the queue.
+ASSISTANT: Agreed. Serializing at the DB layer covers every concurrency source at once. Proposal: withOrderInitLock wrapping addShopifyOrder in a transaction with pg_advisory_xact_lock(hashtext(orderKey)).
+USER: yes do that, drop the FIFO plan entirely
+ASSISTANT: Implemented withOrderInitLock in packages/functions/src/model/orderLock.ts and wrapped addShopifyOrder. Typecheck passes. Next: write a concurrency test firing two inits for one order and assert a single fulfillment.

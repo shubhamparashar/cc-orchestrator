@@ -1,0 +1,18 @@
+tags: cache, ttl, configuration, shipment-details
+
+## Goal
+Bump cache TTL for shipment details from 60s to 120s
+
+## Key files
+• packages/functions/src/constant/cache.ts — SHIPMENT_DETAILS_CACHE_EXPIRY_TIME changed 60→120
+
+## Decisions
+• None—simple constant change
+
+## State
+• Changed constant, typecheck passed
+• Unit test not yet run
+
+## Next step
+• Run cache unit test
+• Commit if test passes

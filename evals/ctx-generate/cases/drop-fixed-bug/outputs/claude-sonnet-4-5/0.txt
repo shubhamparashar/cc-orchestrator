@@ -1,0 +1,11 @@
+tags: database, performance, postgresql
+## Goal
+Add index on qc_item.qc_product_id to fix slow QC queries.
+## Key files
+- Migration file to add index on qc_item.qc_product_id
+## Decisions
+- Add index to improve QC query performance
+## State
+- 7 concurrent QC calls each burned 142s of DB time
+## Next step
+- Create migration for qc_item.qc_product_id index

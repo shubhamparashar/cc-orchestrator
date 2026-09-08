@@ -1,6 +1,6 @@
 {
   "name": "@shubhamparashar/cc-orchestrator",
-  "version": "1.15.0",
+  "version": "1.16.0",
   "description": "Local-first, read-only web+phone dashboard over all your Claude Code sessions — status board, lifetime cost, history search, health signals.",
   "type": "module",
   "bin": {
@@ -12,7 +12,8 @@
   "main": "server.mjs",
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test"
+    "prune": "node jobs/prune.mjs",
+    "test": "node --test test/"
   },
   "engines": {
     "node": ">=20"

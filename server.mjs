@@ -28,6 +28,7 @@ import { sendPrompt, listJobs, stopJob, dismissJob, attachInTerminal, attachComm
 import { startLive, stopLive, stopAllLive, hardKillAllLive, listLive, isLiveCwd } from './lib/liveSessions.mjs';
 import { CONTEXTS_DIR, contextPathFor, isSessionUuid, listContextSessions, loadIndex, readContext } from './lib/contextStore.mjs';
 import { buildSessionIndex } from './lib/sessionIndex.mjs';
+import { runPrune } from './jobs/prune.mjs';
 import { rankDocs } from './lib/rank.mjs';
 import { claudeStatus } from './lib/status.mjs';
 import {
@@ -731,6 +732,10 @@ const handler = async (req, res) => {
             const { sessionId, cwd, fork, skipPermissions } = await readBody(req);
             if (!sessionId) return sendJson(res, 400, { error: 'sessionId required' });
             if (!isSessionUuid(sessionId)) return sendJson(res, 400, { error: 'invalid session id' });
+            if (skipPermissions && !local) {
+                log.info(`attach REJECTED skipPermissions from remote session=${sessionId}`);
+                return sendJson(res, 403, { error: 'privileged launch requires loopback' });
+            }
             const opts = { sessionId, cwd, fork: Boolean(fork), skipPermissions: Boolean(skipPermissions) };
             const result = await attachInTerminal(opts);
             result.command = attachCommand(opts);
@@ -742,6 +747,10 @@ const handler = async (req, res) => {
         if (req.method === 'POST' && url.pathname === '/api/live/start') {
             const { sessionId, cwd, level, prompt, contextSessionId } = await readBody(req);
             const lvl = typeof level === 'string' ? level : 'ask';
+            if (lvl === 'full' && !local) {
+                log.info(`live START REJECTED level=full from remote session=${sessionId ?? 'new'}`);
+                return sendJson(res, 403, { error: 'privileged launch requires loopback' });
+            }
             // RESUME an existing session (sessionId given) or start a NEW one in a
             // chosen directory. The cwd is validated server-side either way.
             const resumeId = sessionId != null ? String(sessionId) : null;
@@ -897,6 +906,10 @@ server.listen(PORT, HOST, () => {
     const refreshTodos = () => getSessionsShared().then((s) => buildTodoDigest(s)).catch(() => {});
     if (digestStale(loadTodoDigest())) refreshTodos();
     setInterval(refreshTodos, 24 * 60 * 60 * 1000);
+    // Daily reap of context/state/canvas files whose session is gone or stale (30d).
+    const pruneOld = () => runPrune({ days: 30 }).then((r) => log.info(r.summary)).catch((err) => log.warn(`prune failed: ${err.message}`));
+    pruneOld();
+    setInterval(pruneOld, 24 * 60 * 60 * 1000);
     // AFK alerts: fire OS notifications for waiting-session digests / budget
     // crossings. Opt-in — only scheduled when the config enables it.
     if (cfg.alerts.enabled) {

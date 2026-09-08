@@ -1,0 +1,10 @@
+tags: db, index, performance
+## Goal
+Add missing index on qc_item.qc_product_id to reduce QC query time from 142s per call.
+## Key files
+- (migration to create): add index on qc_item.qc_product_id
+## Decisions
+## State
+- 7 concurrent QC calls taking 142s each, blocked on missing index (open)
+## Next step
+- Create and run database migration

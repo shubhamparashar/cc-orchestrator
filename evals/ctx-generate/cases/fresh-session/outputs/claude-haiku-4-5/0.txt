@@ -1,0 +1,14 @@
+tags: database-perf, trigram-index, postgres-migration
+## Goal
+Fix slow GetOrders search (~877ms) by adding trigram GIN index on order_line_item.internal_order_id.
+## Key files
+- services/migrations/20260701_add_oli_internal_order_id_trgm.ts — adds trigram GIN index on internal_order_id
+- services/allMigrations.ts — registered new migration
+## Decisions
+- Using plain CREATE INDEX (not CONCURRENT) because migration runner wraps migrations in transactions
+- Trigram GIN covers OR clause: internal_order_id ILIKE ? OR title ILIKE ? (title already indexed)
+## State
+- Migration created and typecheck passes, not yet run against database
+- Blocked on staging RDS migration + EXPLAIN re-run to verify the OR scan is fixed
+## Next step
+- Trigger RDS migration on staging and re-run EXPLAIN to confirm fix

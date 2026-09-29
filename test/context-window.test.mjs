@@ -16,6 +16,13 @@ test('current 1M-native models resolve to a 1M window without any marker', () =>
     assert.equal(contextWindowFor('claude-fable-5', null, 0), M);
 });
 
+test('the Fable 5.1 / Opus 5.5 / Sonnet 5.5 lineup and its 5.x predecessors resolve to 1M', () => {
+    for (const id of ['claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-opus-5', 'claude-sonnet-5']) {
+        assert.equal(contextWindowFor(id, null, 0), M, id);
+    }
+    assert.equal(contextWindowFor('claude-haiku-4-5-20251001', null, 0), K);
+});
+
 test('a real opus-4-8 occupancy divides by 1M (matches Claude Desktop)', () => {
     const used = 129_898;
     const pct = (used / contextWindowFor('claude-opus-4-8', 'claude-opus-4-8', used)) * 100;

@@ -3,6 +3,17 @@
 All notable changes to cc-orchestrator. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## [1.16.1] - 2026-09-30
+
+### Fixed
+- **Cost and context math for the Fable 5.1 / Opus 5.5 / Sonnet 5.5 lineup.** `claude-opus-5-5`
+  priced at Opus 5's $5/$25 (official: $4/$20), `claude-sonnet-5-5` and `claude-sonnet-5` at
+  $3/$15 (official: $2/$10), and cache hits on `claude-fable-5-1` and `claude-opus-5-5` at the
+  standard 0.1x of input (official: $0.25 and $0.20 per MTok). Rates may now carry an optional
+  `cacheRead` (USD per MTok) for models off the 0.1x multiplier. The context window table was
+  missing every 5.x Opus and Sonnet id, so those sessions divided by 200k instead of 1M.
+  Source: platform.claude.com/docs/en/about-claude/pricing and models/overview.
+
 ## [1.16.0] - 2026-09-08
 
 ### Added

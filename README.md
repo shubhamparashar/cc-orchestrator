@@ -282,7 +282,8 @@ breakdown on hover), and the header shows total spend across all sessions.
 - `lib/pricing.mjs` — USD-per-1M-token table (input + output per model). Current Claude
   models are flat-priced across the full 1M context window (no long-context premium), so
   one rate per model is correct. Cache economics: reads 0.1×, writes 1.25× (5-min) / 2×
-  (1-hour) of the base input rate. Override or extend via `~/.claude/contexts/pricing.json`
+  (1-hour) of the base input rate; a model whose cache hits are priced differently (Fable 5.1
+  $0.25, Opus 5.5 $0.20 per MTok) carries an explicit `cacheRead` rate. Override or extend via `~/.claude/contexts/pricing.json`
   (same shape, merged over the defaults); `GET /api/pricing` returns the active table.
 - `lib/cost.mjs` — sums every assistant turn's token usage per model across the **whole**
   transcript (cumulative, not the tail), cached on `(size, mtime)` so a refresh re-reads
